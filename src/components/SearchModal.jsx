@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { tmdbFetch, imgUrl } from "../utils/api";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { tmdbFetch } from "../utils/api";
+import MediaCard from "./MediaCard";
 import { SearchIcon, CloseIcon } from "./Icons";
 import { storage } from "../utils/storage";
+import { useModal } from "../utils/useModal";
 
 const HISTORY_KEY = "searchHistory";
 const MAX_HISTORY = 12;
+const EMPTY_RESULTS = [];
 
 function loadHistory() {
   return storage.get(HISTORY_KEY) || [];
@@ -14,46 +17,58 @@ function saveHistory(history) {
   storage.set(HISTORY_KEY, history);
 }
 
-export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
+export default function SearchModal({
+  apiKey,
+  onSelect,
+  onClose,
+  offline,
+  onOpenSettings,
+}) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [response, setResponse] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const [history, setHistory] = useState(loadHistory);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const inputRef = useRef();
+  const { dialogProps, backdropProps } = useModal(onClose);
+  const term = query.trim();
+  const request = useMemo(
+    () => apiKey && !offline && term ? { apiKey, term, attempt } : null,
+    [apiKey, offline, term, attempt],
+  );
+  const currentResponse = request && response?.request === request ? response : null;
+  const loading = !!request && !currentResponse;
+  const results = currentResponse?.results ?? EMPTY_RESULTS;
 
   useEffect(() => {
-    const tid = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(tid);
-  }, []);
+    setHistoryIndex(-1);
+  }, [query, history.length]);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-    let mounted = true;
+    if (!request) return;
+    let active = true;
     const timer = setTimeout(async () => {
-      setLoading(true);
       try {
         const data = await tmdbFetch(
-          `/search/multi?query=${encodeURIComponent(query)}&page=1`,
-          apiKey,
+          `/search/multi?query=${encodeURIComponent(request.term)}&page=1`,
+          request.apiKey,
         );
-        if (mounted) {
-          setResults(
-            (data.results || [])
-              .filter((r) => r.media_type !== "person")
-              .slice(0, 12),
-          );
+        if (active) {
+          const matches = (data.results || [])
+            .filter((r) => r.media_type === "movie" || r.media_type === "tv")
+            .slice(0, 20);
+          setResponse({ request, results: matches });
         }
-      } catch {}
-      if (mounted) setLoading(false);
+      } catch {
+        if (active) setResponse({ request, error: true });
+      }
     }, 380);
     return () => {
-      mounted = false;
+      active = false;
       clearTimeout(timer);
     };
-  }, [query, apiKey]);
+  }, [request]);
 
   const addToHistory = useCallback((term) => {
     const trimmed = term.trim();
@@ -68,8 +83,7 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
     });
   }, []);
 
-  const removeFromHistory = useCallback((e, term) => {
-    e.stopPropagation();
+  const removeFromHistory = useCallback((term) => {
     setHistory((prev) => {
       const next = prev.filter((h) => h !== term);
       saveHistory(next);
@@ -101,101 +115,161 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
     inputRef.current?.focus();
   }, []);
 
+  const showHistory = !term && history.length > 0 && !!apiKey && !offline;
+
   const handleKey = (e) => {
-    if (e.key === "Escape") onClose();
+    if (showHistory) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHistoryIndex((i) => Math.min(i + 1, history.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHistoryIndex((i) => Math.max(i - 1, -1));
+        return;
+      }
+      if (e.key === "Enter" && historyIndex >= 0 && history[historyIndex]) {
+        e.preventDefault();
+        handleHistoryClick(history[historyIndex]);
+        return;
+      }
+    }
     if (e.key === "Enter" && query.trim()) addToHistory(query);
   };
 
-  const showHistory = !query && history.length > 0;
+  const movieCount = useMemo(
+    () => results.filter((r) => r.media_type === "movie").length,
+    [results],
+  );
+  const tvCount = useMemo(
+    () => results.filter((r) => r.media_type === "tv").length,
+    [results],
+  );
+  const filteredResults = useMemo(() => {
+    if (typeFilter === "all") return results;
+    return results.filter((r) => r.media_type === typeFilter);
+  }, [results, typeFilter]);
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="search-box">
+    <div className="modal-overlay" {...backdropProps}>
+      <div
+        className="search-box"
+        {...dialogProps}
+        aria-label="Search"
+      >
         <div className="search-input-wrap">
           <SearchIcon />
           <input
             ref={inputRef}
+            data-modal-initial-focus
             className="search-input"
-            placeholder="Search movies and series..."
+            placeholder="Movies, series, anime"
+            aria-label="Search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
           />
-          {query ? (
+          {query && (
             <button
-              className="btn btn-ghost btn-icon"
+              type="button"
+              className="icon-action"
               onClick={() => setQuery("")}
+              aria-label="Clear search"
             >
               <CloseIcon />
             </button>
-          ) : (
-            <button className="btn btn-ghost btn-icon" onClick={onClose}>
-              <CloseIcon />
-            </button>
           )}
+          <button type="button" className="icon-action" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
         </div>
 
-        <div className="search-results">
-          {offline && (
-            <div
-              style={{
-                padding: "12px 20px",
-                background: "rgba(255,165,0,0.1)",
-                borderBottom: "1px solid var(--border)",
-                fontSize: 13,
-                color: "#ff9800",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              🌐 No internet, search is unavailable offline.
-            </div>
-          )}
-
-          {!offline && loading && (
-            <div className="loader">
-              <div className="spinner" />
-            </div>
-          )}
-
-          {!loading && query && results.length === 0 && (
-            <div className="search-empty">No results for "{query}"</div>
-          )}
-
-          {!loading &&
-            results.map((r) => (
-              <div
-                key={r.id}
-                className="search-result"
-                onClick={() => handleSelect(r)}
+        {request && (
+          <div className="search-filters" role="group" aria-label="Media type">
+            {[
+              { id: "all", label: "All", count: results.length },
+              { id: "movie", label: "Movies", count: movieCount },
+              { id: "tv", label: "Series", count: tvCount },
+            ].map((f) => (
+              <button
+                type="button"
+                aria-pressed={typeFilter === f.id}
+                key={f.id}
+                className={`search-filter-pill${typeFilter === f.id ? " search-filter-pill--active" : ""}`}
+                onClick={() => setTypeFilter(f.id)}
               >
-                <img
-                  src={
-                    r.poster_path
-                      ? imgUrl(r.poster_path, "w92")
-                      : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='58'%3E%3Crect fill='%23222' width='40' height='58'/%3E%3C/svg%3E"
-                  }
-                  alt=""
-                />
-                <div className="search-result-info">
-                  <div className="search-result-title">{r.title || r.name}</div>
-                  <div className="search-result-meta">
-                    {(r.release_date || r.first_air_date || "").slice(0, 4)}
-                    {r.vote_average ? ` · ★ ${r.vote_average.toFixed(1)}` : ""}
-                  </div>
-                </div>
-                <span
-                  className={`search-result-type ${r.media_type === "tv" ? "type-tv" : "type-movie"}`}
-                >
-                  {r.media_type === "tv" ? "Series" : "Movie"}
-                </span>
-              </div>
+                {currentResponse?.results ? `${f.label} (${f.count})` : f.label}
+              </button>
             ))}
+          </div>
+        )}
 
+        <div className="search-results" aria-busy={loading}>
+          {!apiKey && (
+            <div className="empty-state" style={{ padding: "40px 24px" }}>
+              <h3>Add a TMDB token to search</h3>
+              <p>Search needs your free TMDB Read Access Token.</p>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn--sm"
+                  style={{ marginTop: 8 }}
+                  onClick={onOpenSettings}
+                >
+                  Open settings
+                </button>
+              )}
+            </div>
+          )}
+          {apiKey && offline && (
+            <div className="search-notice">
+              You're offline. Search needs a connection.
+            </div>
+          )}
+          {loading && (
+            <div className="search-grid" aria-hidden="true">
+              {Array.from({ length: 12 }, (_, i) => (
+                <div className="card skeleton-card" key={i}>
+                  <div className="card-poster" />
+                  <div className="skeleton skeleton-line" />
+                </div>
+              ))}
+            </div>
+          )}
+          {currentResponse?.error && (
+            <div className="search-empty">
+              <p role="alert">Couldn't load search results.</p>
+              <button
+                className="btn btn-secondary btn--sm"
+                type="button"
+                onClick={() => {
+                  inputRef.current?.focus();
+                  setAttempt((count) => count + 1);
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          {currentResponse?.results && filteredResults.length === 0 && (
+            <div className="search-empty">
+              {results.length > 0
+                ? `No ${typeFilter === "tv" ? "series" : "movies"} match “${query}”`
+                : `No results for “${query}”`}
+            </div>
+          )}
+          {filteredResults.length > 0 && (
+            <div className="search-grid">
+              {filteredResults.map((r) => (
+                <MediaCard
+                  key={`${r.media_type}_${r.id}`}
+                  item={r}
+                  onClick={() => handleSelect(r)}
+                />
+              ))}
+            </div>
+          )}
           {showHistory && (
             <div className="search-history">
               <div className="search-history-header">
@@ -204,20 +278,27 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
                   Clear all
                 </button>
               </div>
-              {history.map((term) => (
+              {history.map((term, idx) => (
                 <div
                   key={term}
-                  className="search-history-item"
-                  onClick={() => handleHistoryClick(term)}
+                  className={`search-history-item${idx === historyIndex ? " search-history-item--active" : ""}`}
                 >
-                  <span className="search-history-icon">
-                    <SearchIcon />
-                  </span>
-                  <span className="search-history-term">{term}</span>
                   <button
+                    type="button"
+                    className="search-history-select"
+                    onClick={() => handleHistoryClick(term)}
+                  >
+                    <span className="search-history-icon">
+                      <SearchIcon />
+                    </span>
+                    <span className="search-history-term">{term}</span>
+                  </button>
+                  <button
+                    type="button"
                     className="search-history-remove"
-                    onClick={(e) => removeFromHistory(e, term)}
+                    onClick={() => removeFromHistory(term)}
                     title="Remove"
+                    aria-label={`Remove ${term}`}
                   >
                     <CloseIcon />
                   </button>
@@ -226,9 +307,9 @@ export default function SearchModal({ apiKey, onSelect, onClose, offline }) {
             </div>
           )}
 
-          {!query && history.length === 0 && (
+          {apiKey && !offline && !term && history.length === 0 && (
             <div className="search-hint">
-              Search for movies and series &nbsp;·&nbsp; <kbd>ESC</kbd> to close
+              Search for movies and series &nbsp;·&nbsp; <kbd>Esc</kbd> to close
             </div>
           )}
         </div>

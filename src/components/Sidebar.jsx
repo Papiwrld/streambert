@@ -7,6 +7,8 @@ import {
   SearchIcon,
   HistoryIcon,
   FilmIcon,
+  TVIcon,
+  MoviesIcon,
   SettingsIcon,
   DownloadsQueueIcon,
   QuitIcon,
@@ -31,7 +33,6 @@ export default function Sidebar({
   const dragNode = useRef(null);
   const seasonalEvent = useSeasonalEvent();
 
-  const [tooltip, setTooltip] = useState(null); // { title, y }
   const [contextMenu, setContextMenu] = useState(null); // { item, x, y }
 
   useEffect(() => {
@@ -47,7 +48,6 @@ export default function Sidebar({
   const handleContextMenu = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
-    setTooltip(null);
     setContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
@@ -91,21 +91,16 @@ export default function Sidebar({
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleMouseEnter = (e, title) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setTooltip({ title, y: rect.top + rect.height / 2 });
-  };
-
-  const handleMouseLeave = () => {
-    setTooltip(null);
-  };
-
   return (
-    <div className="sidebar">
+    <nav className="sidebar" aria-label="Main">
       <div
         className="sidebar-logo"
         onClick={() => onNavigate("home")}
-        title="Streambert"
+        title="Lumen"
+        role="button"
+        tabIndex={0}
+        aria-label="Home"
+        onKeyDown={(e) => e.key === "Enter" && onNavigate("home")}
         style={{ position: "relative" }}
       >
         <StreambertLogo />
@@ -113,10 +108,10 @@ export default function Sidebar({
       </div>
 
       {canGoBack && (
-        <SideBtn onClick={onBack} icon={<BackIcon />} label="Back (Ctrl+Z)" />
+        <SideBtn onClick={onBack} icon={<BackIcon />} label="Back" />
       )}
 
-      <SideBtn onClick={onSearch} icon={<SearchIcon />} label="Search  (⌘F)" />
+      <SideBtn onClick={onSearch} icon={<SearchIcon />} label="Search" />
       <SideBtn
         active={page === "home"}
         onClick={() => onNavigate("home")}
@@ -124,10 +119,22 @@ export default function Sidebar({
         label="Home"
       />
       <SideBtn
+        active={page === "movies"}
+        onClick={() => onNavigate("movies")}
+        icon={<MoviesIcon />}
+        label="Movies"
+      />
+      <SideBtn
+        active={page === "series"}
+        onClick={() => onNavigate("series")}
+        icon={<TVIcon />}
+        label="Series"
+      />
+      <SideBtn
         active={page === "history"}
         onClick={() => onNavigate("history")}
         icon={<HistoryIcon />}
-        label="Library & History"
+        label="Library"
       />
       <SideBtn
         active={page === "downloads"}
@@ -157,9 +164,13 @@ export default function Sidebar({
                 onNavigate(item.media_type === "tv" ? "tv" : "movie", item)
               }
               onContextMenu={(e) => handleContextMenu(e, item)}
-              onMouseEnter={(e) => handleMouseEnter(e, title)}
-              onMouseLeave={handleMouseLeave}
-              style={{ cursor: "grab", position: "relative" }}
+              onKeyDown={(e) =>
+                e.key === "Enter" &&
+                onNavigate(item.media_type === "tv" ? "tv" : "movie", item)
+              }
+              role="button"
+              tabIndex={0}
+              title={title}
             >
               {item.poster_path ? (
                 <img src={imgUrl(item.poster_path, "w200")} alt={title} />
@@ -168,30 +179,12 @@ export default function Sidebar({
                   <FilmIcon />
                 </div>
               )}
-              {dragOver === index && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 3,
-                    background: "var(--accent, #e50914)",
-                    borderRadius: 2,
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
+              <span className="sidebar-label">{title}</span>
+              {dragOver === index && <div className="saved-thumb-drop" />}
             </div>
           );
         })}
       </div>
-
-      {tooltip && (
-        <div className="saved-thumb-tooltip" style={{ top: tooltip.y }}>
-          {tooltip.title}
-        </div>
-      )}
 
       {contextMenu && (
         <div
@@ -220,7 +213,7 @@ export default function Sidebar({
         <SideBtn
           onClick={onShowShortcuts}
           icon={<HelpIcon />}
-          label="Help & Shortcuts (?)"
+          label="Help"
         />
         <SideBtn
           active={page === "settings"}
@@ -229,16 +222,15 @@ export default function Sidebar({
           label="Settings"
         />
         <button
-          className="sidebar-btn"
+          className="sidebar-btn sidebar-btn--quit"
           onClick={() => window.electron?.quitApp?.()}
-          title="Quit App"
-          style={{ color: "#e53e3e", marginTop: 4 }}
+          aria-label="Quit"
         >
           <QuitIcon />
-          <span className="tooltip">Quit App</span>
+          <span className="tooltip">Quit</span>
         </button>
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -247,31 +239,12 @@ function SideBtn({ active, onClick, icon, label, badge }) {
     <button
       className={`sidebar-btn ${active ? "active" : ""}`}
       onClick={onClick}
-      style={{ position: "relative" }}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
     >
       {icon}
       <span className="tooltip">{label}</span>
-      {badge && (
-        <span
-          style={{
-            position: "absolute",
-            top: 4,
-            right: 4,
-            minWidth: 16,
-            height: 16,
-            borderRadius: 8,
-            background: "var(--red)",
-            color: "white",
-            fontSize: 10,
-            fontWeight: 700,
-            lineHeight: "16px",
-            textAlign: "center",
-            padding: "0 4px",
-          }}
-        >
-          {badge}
-        </span>
-      )}
+      {badge && <span className="sidebar-badge">{badge}</span>}
     </button>
   );
 }

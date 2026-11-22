@@ -29,23 +29,7 @@ import {
   sourceUsesCleanUa,
   getNextNonAsyncSource,
 } from "../utils/api";
-import {
-  PlayIcon,
-  BookmarkIcon,
-  BookmarkFillIcon,
-  BackIcon,
-  StarIcon,
-  FilmIcon,
-  DownloadIcon,
-  WatchedIcon,
-  TrailerIcon,
-  RatingShieldIcon,
-  RatingLockIcon,
-  SourceIcon,
-  ShieldBlockIcon,
-  PopOutIcon,
-  CastIcon,
-} from "../components/Icons";
+import { PlayIcon, BookmarkIcon, BookmarkFillIcon, BackIcon, StarIcon, FilmIcon, DownloadIcon, WatchedIcon, TrailerIcon, RatingShieldIcon, RatingLockIcon, SourceIcon, ShieldBlockIcon, PopOutIcon, CastIcon, CheckIcon, ResetIcon, WarningIcon } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
@@ -65,6 +49,11 @@ import {
   getRatingCountry,
 } from "../utils/ageRating";
 import CastModal from "../components/CastModal";
+import TitleArt from "../components/TitleArt";
+import DetailAside from "../components/DetailAside";
+import SimilarRow from "../components/SimilarRow";
+import WatchView from "../components/WatchView";
+import ThumbsButtons from "../components/ThumbsButtons";
 import { useCredits } from "../utils/useCredits";
 import {
   GAMEPAD_PLAYER_SCRIPT,
@@ -125,6 +114,7 @@ export default function MoviePage({
   const [menuPos, setMenuPos] = useState(null);
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
+
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
@@ -207,9 +197,11 @@ export default function MoviePage({
   } = useBlockedStats(item.id);
 
   // Age rating
-  const [rating, setRating] = useState({ cert: null, minAge: null });
+  const [ratingResult, setRating] = useState(null);
+  const rating = ratingResult ?? { cert: null, minAge: null };
   const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
   const ratingCountry = useMemo(() => getRatingCountry(storage), []);
+  const checkingRating = ageLimitSetting != null && !ratingResult && !!apiKey;
   const restricted = isRestricted(rating.minAge, ageLimitSetting);
 
   const progressKey = `movie_${item.id}`;
@@ -716,11 +708,13 @@ export default function MoviePage({
   }, [playing, progressKey, watchedThreshold, playerSource, progressViaFrames]);
 
   const handlePlay = useCallback(() => {
+    if (checkingRating || restricted) return;
+    if (playing) return; // already open in the watch view
     setM3u8Url(null);
     setInterceptedSubs([]);
     setPlaying(true);
     onHistory({ ...d, media_type: "movie" });
-  }, [d, onHistory]);
+  }, [checkingRating, restricted, playing, d, onHistory]);
 
   // Intercept fullscreen requests from embedded players (vidsrc / 2embed use
   // the native Fullscreen API which would otherwise fullscreen the entire app).
@@ -792,6 +786,22 @@ export default function MoviePage({
     return new Date(d.release_date) > today;
   }, [d.release_date]);
 
+  const autoplayedIdRef = useRef(null);
+  useEffect(() => {
+    if (
+      item?.autoplay &&
+      details &&
+      !playing &&
+      !isUnreleased &&
+      !checkingRating &&
+      !restricted &&
+      autoplayedIdRef.current !== item.id
+    ) {
+      autoplayedIdRef.current = item.id;
+      handlePlay();
+    }
+  }, [item?.autoplay, item?.id, details, playing, isUnreleased, checkingRating, restricted, handlePlay]);
+
   // Check if this movie is already downloaded or currently downloading
   const movieDownload = (downloads || []).find(
     (dl) =>
@@ -838,7 +848,14 @@ export default function MoviePage({
           </div>
           <div className="detail-info">
             <div className="detail-type">Movie</div>
-            <div className="detail-title">{title}</div>
+            <TitleArt
+              type="movie"
+              id={item.id}
+              apiKey={apiKey}
+              title={title}
+              className="detail-title"
+              size="w780"
+            />
             <div className="genres">
               {displayGenres.map((g) => (
                 <span key={g.id} className="genre-tag">
@@ -896,7 +913,7 @@ export default function MoviePage({
                   disabled
                   title="This movie has not been released yet"
                 >
-                  🔒 Unreleased
+                  <RatingLockIcon size={18} /> Coming soon
                 </button>
               ) : restricted ? (
                 <button
@@ -904,80 +921,83 @@ export default function MoviePage({
                   disabled
                   title="Inappropriate for your age rating setting"
                 >
-                  🔒 Restricted
+                  <RatingLockIcon size={18} /> Restricted
                 </button>
               ) : (
-                <button className="btn btn-primary" onClick={handlePlay}>
-                  <PlayIcon /> {playing ? "Restart" : "Play"}
+                <button className="btn btn-primary" onClick={handlePlay} disabled={checkingRating}>
+                  <PlayIcon /> {checkingRating ? "Checking rating…" : playing ? "Go to player" : hasProgress && !isWatched ? "Resume" : "Play"}
                 </button>
               )}
-              {trailerKey &&
-                (restricted ? (
-                  <button
-                    className="btn btn-secondary btn-restricted"
-                    disabled
-                    title="Inappropriate for your age rating setting"
-                  >
-                    🔒 Trailer
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setShowTrailer(true)}
-                  >
-                    <TrailerIcon /> Trailer
-                  </button>
-                ))}
+              {trailerKey && (
+                <button
+                  className="icon-action"
+                  onClick={() => setShowTrailer(true)}
+                  disabled={restricted}
+                  aria-label="Trailer"
+                  title="Trailer"
+                >
+                  <TrailerIcon />
+                </button>
+              )}
               <button
-                className="btn btn-secondary"
-                onClick={() => setShowCast(true)}
+                className={`icon-action${isSaved ? " is-on" : ""}`}
+                onClick={onSave}
+                aria-label={isSaved ? "Remove from saved" : "Save"}
+                aria-pressed={isSaved}
+                title={isSaved ? "Saved" : "Save"}
               >
-                <CastIcon /> Cast
-              </button>
-              <button className="btn btn-secondary" onClick={onSave}>
                 {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}
-                {isSaved ? "Saved" : "Save"}
               </button>
-              {!isUnreleased &&
-                (isWatched ? (
-                  <button
-                    className="btn btn-ghost watched-btn"
-                    onClick={() => onMarkUnwatched?.(progressKey)}
-                  >
-                    <WatchedIcon size={16} /> Watched
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => onMarkWatched?.(progressKey)}
-                    >
-                      ✓ Mark Watched
-                    </button>
-                    {hasProgress && (
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 13 }}
-                        onClick={() => {
-                          saveProgress(progressKey, 0);
-                          storage.set("dlTime_" + progressKey, null);
-                        }}
-                      >
-                        ⊘ Not Started
-                      </button>
-                    )}
-                  </>
-                ))}
-              <button className="btn btn-ghost" onClick={onBack}>
-                <BackIcon /> Back
+              {!isUnreleased && (
+                <button
+                  className={`icon-action${isWatched ? " is-on watched-btn" : ""}`}
+                  onClick={() =>
+                    isWatched
+                      ? onMarkUnwatched?.(progressKey)
+                      : onMarkWatched?.(progressKey)
+                  }
+                  aria-label={isWatched ? "Mark as unwatched" : "Mark as watched"}
+                  aria-pressed={isWatched}
+                  title={isWatched ? "Watched" : "Mark as watched"}
+                >
+                  <CheckIcon />
+                </button>
+              )}
+              {!isUnreleased && !isWatched && hasProgress && (
+                <button
+                  className="icon-action"
+                  onClick={() => {
+                    saveProgress(progressKey, 0);
+                    storage.set("dlTime_" + progressKey, null);
+                  }}
+                  aria-label="Reset progress"
+                  title="Reset progress"
+                >
+                  <ResetIcon />
+                </button>
+              )}
+              <ThumbsButtons type="movie" id={item.id} />
+              <button
+                className="icon-action"
+                onClick={() => setShowCast(true)}
+                aria-label="Cast and crew"
+                title="Cast and crew"
+              >
+                <CastIcon />
               </button>
             </div>
           </div>
+          <DetailAside
+            type="movie"
+            cast={credits.cast}
+            crew={credits.crew}
+            onShowCast={() => setShowCast(true)}
+          />
         </div>
       </div>
 
       {playing && !restricted && !isUnreleased && (
-        <div className="section">
+        <WatchView title={title} onClose={() => setPlaying(false)}>
           <div
             className={`player-wrap${playerFullscreen ? " player-wrap--fullscreen" : ""}`}
             ref={playerWrapRef}
@@ -1029,7 +1049,7 @@ export default function MoviePage({
                   borderRadius: "inherit",
                 }}
               >
-                <span style={{ fontSize: 28 }}>⚠️</span>
+                <WarningIcon size={28} color="var(--text3)" />
                 <span style={{ fontSize: 14, color: "var(--text2)" }}>
                   Movie not found on HiAnime
                 </span>
@@ -1057,7 +1077,7 @@ export default function MoviePage({
                   borderRadius: "inherit",
                 }}
               >
-                <span style={{ fontSize: 28 }}>⚠️</span>
+                <WarningIcon size={28} color="var(--text3)" />
                 <span style={{ fontSize: 14, color: "var(--text2)" }}>
                   Could not resolve the {srcId.idLabel} for this title
                 </span>
@@ -1289,7 +1309,7 @@ export default function MoviePage({
                     color:
                       movieDownload.status === "downloading"
                         ? "var(--red)"
-                        : "#4caf50",
+                        : "#3fb37f",
                   }}
                 >
                   {movieDownload.status === "downloading" ? "↓" : "✓"}
@@ -1305,7 +1325,7 @@ export default function MoviePage({
                   className="player-no-progress-hint"
                   title="No automatic progress tracking for this source"
                 >
-                  ⚠ no tracking
+                  No progress tracking
                 </span>
               )}
             </button>
@@ -1324,24 +1344,7 @@ export default function MoviePage({
               </span>
             </div>
           )}
-          <div className="progress-mark-row">
-            <span
-              style={{ fontSize: 12, color: "var(--text3)", marginRight: 4 }}
-            >
-              Mark progress:
-            </span>
-            {[25, 50, 75, 100].map((p) => (
-              <button
-                key={p}
-                className="btn btn-ghost"
-                style={{ padding: "5px 14px", fontSize: 12 }}
-                onClick={() => saveProgress(progressKey, p)}
-              >
-                {p}%
-              </button>
-            ))}
-          </div>
-        </div>
+        </WatchView>
       )}
 
       {collection && onSelect && (
@@ -1367,6 +1370,18 @@ export default function MoviePage({
             })}
           </div>
         </div>
+      )}
+
+      {onSelect && (
+        <SimilarRow
+          type="movie"
+          id={item.id}
+          apiKey={apiKey}
+          onSelect={onSelect}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+        />
       )}
 
       {showTrailer && trailerKey && (

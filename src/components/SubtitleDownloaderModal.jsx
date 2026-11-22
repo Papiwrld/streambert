@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { TrashIcon, SubtitlesIcon, SettingsIcon } from "./Icons";
+import { useModal } from "../utils/useModal";
+import {
+  TrashIcon,
+  SubtitlesIcon,
+  SettingsIcon,
+  AccessibilityIcon,
+  BotIcon,
+  CloseIcon,
+  RefreshIcon,
+  WarningIcon,
+  DownloadIcon,
+  CheckIcon,
+} from "./Icons";
 import { storage, STORAGE_KEYS, secureStorage } from "../utils/storage";
 import { SUBTITLE_LANGUAGES } from "../utils/subtitles";
 
-// ── Subtitle Downloader Modal (for retroactive subtitle download) ──────────────
+// ── Subtitle Downloader Modal (for retroactive subtitle download) ───────────────
 export default function SubtitleDownloaderModal({
   dl,
   onClose,
@@ -12,8 +24,8 @@ export default function SubtitleDownloaderModal({
   onOpenSettings,
 }) {
   const defaultLang = storage.get(STORAGE_KEYS.SUBTITLE_LANG) || "en";
-  const [subdlApiKey, setSubdlApiKey] = useState(null); // null = not yet loaded
-  const [wyzieApiKey, setWyzieApiKey] = useState(null); // null = not yet loaded
+  const [subdlApiKey, setSubdlApiKey] = useState(null);
+  const [wyzieApiKey, setWyzieApiKey] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -45,7 +57,9 @@ export default function SubtitleDownloaderModal({
     },
     [],
   );
-  const [deletingPath, setDeletingPath] = useState(null); // path currently being deleted
+  const [deletingPath, setDeletingPath] = useState(null);
+  const busy = downloading || !!deletingPath;
+  const { dialogProps, backdropProps, titleId } = useModal(busy ? null : onClose);
 
   const existingSubs = dl.subtitlePaths || [];
   const existingFileIds = new Set(
@@ -87,10 +101,11 @@ export default function SubtitleDownloaderModal({
     if (subdlApiKey === null || wyzieApiKey === null) return;
     if (!subdlApiKey && !wyzieApiKey) return;
     doSearch(langFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subdlApiKey, wyzieApiKey]);
 
   const handleDownload = async () => {
-    if (!selectedSubs.length || !dl.filePath) return;
+    if (busy || !selectedSubs.length || !dl.filePath) return;
     setDownloading(true);
     setDlError(null);
     try {
@@ -101,7 +116,6 @@ export default function SubtitleDownloaderModal({
       if (res.ok && res.subtitlePaths?.length > 0) {
         setDone(true);
         onSubtitlesSaved(res.subtitlePaths);
-        // Reset after moment so the modal stays open with updated manage-section
         doneTimerRef.current = setTimeout(() => {
           setDone(false);
           setSelectedSubs([]);
@@ -118,7 +132,7 @@ export default function SubtitleDownloaderModal({
 
   const handleDeleteSub = async (sp) => {
     if (
-      !confirm(
+      busy || !confirm(
         `Delete subtitle "${(sp.lang || "?").toUpperCase()}"${sp.release ? ` (${sp.release})` : ""}?`,
       )
     )
@@ -138,542 +152,387 @@ export default function SubtitleDownloaderModal({
   };
 
   return (
-    <>
+    <div className="lumen-dialog-backdrop" {...backdropProps}>
       <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 999999,
-          background: "rgba(0,0,0,0.78)",
-          backdropFilter: "blur(6px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-        onClick={onClose}
+        className="lumen-dialog lumen-dialog--lg"
+        {...dialogProps}
+        aria-labelledby={titleId}
       >
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            width: 620,
-            maxWidth: "95vw",
-            maxHeight: "85vh",
-            display: "flex",
-            flexDirection: "column",
-            boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "15px 20px",
-              borderBottom: "1px solid var(--border)",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                fontWeight: 600,
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-              }}
-            >
-              <SubtitlesIcon size={14} />
-              Subtitles: {dl.name}
-            </span>
-            <button className="icon-btn" onClick={onClose}>
-              ✕
-            </button>
+        {/* Header */}
+        <div className="lumen-dialog__header">
+          <div className="lumen-dialog__title">
+            <SubtitlesIcon size={16} />
+            <span id={titleId}>Subtitles: {dl.name}</span>
           </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close"
+          >
+            <CloseIcon size={18} />
+          </button>
+        </div>
 
-          {/* ── Existing / downloaded subtitles section ── */}
-          {existingSubs.length > 0 && (
-            <div
-              style={{
-                padding: "10px 20px 12px",
-                borderBottom: "1px solid var(--border)",
-                flexShrink: 0,
-                background: "rgba(99,202,183,0.04)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "var(--text3)",
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  marginBottom: 8,
-                }}
-              >
-                Downloaded subtitles
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {existingSubs.map((sp) => (
-                  <div
-                    key={sp.path}
+        {/* Existing / downloaded subtitles */}
+        {existingSubs.length > 0 && (
+          <div className="lumen-dialog__section">
+            <div className="lumen-dialog__section-label">
+              Downloaded subtitles
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {existingSubs.map((sp) => (
+                <div key={sp.path} className="lumen-sub-item">
+                  <span className="lumen-sub-lang">
+                    {(sp.lang || "?").toUpperCase()}
+                  </span>
+                  {sp.source && (
+                    <span
+                      className={`lumen-badge ${sp.source === "subdl" ? "lumen-badge--info" : "lumen-badge--neutral"}`}
+                      style={{ fontSize: 10, padding: "1px 6px" }}
+                    >
+                      {sp.source === "subdl" ? "SubDL" : "Wyzie"}
+                    </span>
+                  )}
+                  <span
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 7,
-                      padding: "6px 10px",
+                      fontSize: 12,
+                      color: "var(--text2)",
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                    }}
+                    title={sp.release || sp.path}
+                  >
+                    {sp.release || sp.path.split(/[\\/]/).pop()}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text3)",
+                      flexShrink: 0,
+                    }}
+                    title={sp.path}
+                  >
+                    .{sp.path.split(".").pop()}
+                  </span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={busy}
+                    onClick={() => handleDeleteSub(sp)}
+                    title="Delete this subtitle file"
+                    aria-label={`Delete ${sp.lang || "unknown language"} subtitle`}
+                    style={{
+                      opacity: deletingPath === sp.path ? 0.4 : 1,
                     }}
                   >
-                    {/* Lang badge */}
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "1px 6px",
-                        borderRadius: 3,
-                        background: "rgba(99,202,183,0.15)",
-                        color: "#63cab7",
-                        border: "1px solid rgba(99,202,183,0.3)",
-                        textTransform: "uppercase",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {(sp.lang || "?").toUpperCase()}
-                    </span>
-                    {/* Source badge */}
-                    {sp.source && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background:
-                            sp.source === "subdl"
-                              ? "rgba(99,149,255,0.15)"
-                              : "rgba(180,130,255,0.15)",
-                          color: sp.source === "subdl" ? "#6395ff" : "#b482ff",
-                          border: `1px solid ${sp.source === "subdl" ? "rgba(99,149,255,0.3)" : "rgba(180,130,255,0.3)"}`,
-                          textTransform: "uppercase",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {sp.source === "subdl" ? "SubDL" : "Wyzie"}
-                      </span>
-                    )}
-                    {/* Release name */}
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text2)",
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        minWidth: 0,
-                      }}
-                      title={sp.release || sp.path}
-                    >
-                      {sp.release || sp.path.split(/[\\/]/).pop()}
-                    </span>
-                    {/* File path hint */}
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text3)",
-                        flexShrink: 0,
-                      }}
-                      title={sp.path}
-                    >
-                      .{sp.path.split(".").pop()}
-                    </span>
-                    {/* Delete button */}
-                    <button
-                      className="icon-btn"
-                      disabled={deletingPath === sp.path}
-                      onClick={() => handleDeleteSub(sp)}
-                      title="Delete this subtitle file"
-                      style={{
-                        flexShrink: 0,
-                        opacity: deletingPath === sp.path ? 0.4 : 1,
-                        fontSize: 13,
-                      }}
-                    >
-                      {deletingPath === sp.path ? "…" : <TrashIcon />}
-                    </button>
+                    {deletingPath === sp.path ? "…" : <TrashIcon size={14} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Language filter + search controls */}
+        <div
+          className="lumen-dialog__section"
+          style={{ display: "flex", gap: 10, alignItems: "center" }}
+        >
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+            Download more
+          </span>
+          <select
+            aria-label="Subtitle language"
+            value={langFilter}
+            onChange={(e) => {
+              setLangFilter(e.target.value);
+              doSearch(e.target.value);
+            }}
+            className="lumen-input"
+            style={{ width: "auto", height: 32, padding: "0 10px", fontSize: 12 }}
+          >
+            <option value="">All languages</option>
+            {SUBTITLE_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-ghost btn--sm"
+            onClick={() => doSearch(langFilter)}
+            disabled={searching}
+          >
+            <RefreshIcon size={13} />
+            <span>{searching ? "Searching…" : "Refresh"}</span>
+          </button>
+          {selectedSubs.length > 0 && (
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--text3)",
+                marginLeft: "auto",
+              }}
+            >
+              {selectedSubs.length} selected
+            </span>
+          )}
+        </div>
+
+        {/* Results list */}
+        <div className="lumen-dialog__body lumen-dialog__body--flush">
+          {!wyzieApiKey && !subdlApiKey && wyzieApiKey !== null && (
+            <div style={{ padding: "16px 24px" }}>
+              <div className="lumen-callout">
+                <WarningIcon size={15} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <strong style={{ color: "var(--text)" }}>
+                      No subtitle API key set.
+                    </strong>{" "}
+                    Add or generate a Wyzie or SubDL key in Settings to search
+                    and download subtitles.
                   </div>
-                ))}
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn--sm"
+                      disabled={busy}
+                      onClick={() => {
+                        onClose();
+                        onOpenSettings("subtitles");
+                      }}
+                    >
+                      <SettingsIcon size={13} />
+                      Open subtitle settings
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── Lang filter + search controls ── */}
-          <div
-            style={{
-              padding: "10px 16px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ fontSize: 12, color: "var(--text3)" }}>
-              Download more:
-            </span>
-            <select
-              value={langFilter}
-              onChange={(e) => {
-                setLangFilter(e.target.value);
-                doSearch(e.target.value);
-              }}
+          {searching && (
+            <div
               style={{
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                color: "var(--text)",
-                padding: "5px 10px",
-                fontSize: 12,
-                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: 28,
+                color: "var(--text3)",
+                fontSize: 13,
+                justifyContent: "center",
               }}
             >
-              <option value="">All languages</option>
-              {SUBTITLE_LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-ghost"
-              style={{ padding: "4px 10px", fontSize: 11 }}
-              onClick={() => doSearch(langFilter)}
-              disabled={searching}
-            >
-              {searching ? "…" : "⟳ Refresh"}
-            </button>
-            {selectedSubs.length > 0 && (
-              <span
-                style={{
-                  fontSize: 12,
-                  color: "var(--text3)",
-                  marginLeft: "auto",
-                }}
-              >
-                {selectedSubs.length} selected
-              </span>
-            )}
-          </div>
+              <div
+                className="spinner"
+                style={{ width: 16, height: 16, borderWidth: 2 }}
+              />
+              <span>Searching…</span>
+            </div>
+          )}
 
-          {/* ── Results list ── */}
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {/* No API key banner */}
-            {!wyzieApiKey && !subdlApiKey && wyzieApiKey !== null && (
-              <div
-                style={{
-                  margin: "16px 20px",
-                  padding: "12px 14px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <span>
-                  <span style={{ color: "var(--red)", fontWeight: 600 }}>
-                    No subtitle API key set.
-                  </span>{" "}
-                  Add/Generate a Wyzie or SubDL key in Settings to search and
-                  download subtitles.
-                </span>
-                {onOpenSettings && (
-                  <button
-                    className="btn btn-ghost"
-                    style={{
-                      alignSelf: "flex-start",
-                      padding: "2px 8px",
-                      fontSize: 11,
-                    }}
-                    onClick={() => {
-                      onClose();
-                      onOpenSettings("subtitles");
-                    }}
+          {searchError && !searching && (
+            <div style={{ padding: "16px 24px" }}>
+              <div className="lumen-callout lumen-callout--danger">
+                <WarningIcon size={15} />
+                <span>{searchError}</span>
+              </div>
+            </div>
+          )}
+
+          {!searching && results?.length === 0 && (
+            <div
+              style={{
+                padding: 24,
+                color: "var(--text3)",
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              No subtitles found for this language
+            </div>
+          )}
+
+          {!searching &&
+            results?.map((r) => {
+              const isSelected = selectedSubs.some(
+                (s) => s.file_id === r.file_id,
+              );
+              const rLang = (r.language || "")
+                .replace(/[^a-z0-9_-]/gi, "")
+                .toLowerCase();
+              const alreadyHave = r.file_id
+                ? existingFileIds.has(r.file_id)
+                : existingLangs.has(rLang);
+              return (
+                <button
+                  type="button"
+                  key={r.file_id}
+                  aria-pressed={alreadyHave || isSelected}
+                  disabled={alreadyHave || busy}
+                  onClick={() => {
+                    setSelectedSubs((prev) =>
+                      isSelected
+                        ? prev.filter((s) => s.file_id !== r.file_id)
+                        : [...prev, r],
+                    );
+                  }}
+                  className={`lumen-sub-row${alreadyHave ? " lumen-sub-row--owned" : isSelected ? " lumen-sub-row--selected" : ""}`}
+                >
+                  <span
+                    className={`lumen-checkbox${alreadyHave ? " lumen-checkbox--disabled" : isSelected ? " lumen-checkbox--checked" : ""}`}
+                    style={{ marginTop: 2 }}
                   >
-                    <SettingsIcon /> Open Settings → Subtitles
-                  </button>
-                )}
-              </div>
-            )}
-            {searching && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: 24,
-                  color: "var(--text3)",
-                  fontSize: 13,
-                  justifyContent: "center",
-                }}
-              >
-                <div
-                  className="spinner"
-                  style={{ width: 16, height: 16, borderWidth: 2 }}
-                />{" "}
-                Searching…
-              </div>
-            )}
-            {searchError && !searching && (
-              <div
-                style={{
-                  padding: "16px 20px",
-                  color: "var(--red)",
-                  fontSize: 13,
-                }}
-              >
-                ⚠ {searchError}
-              </div>
-            )}
-            {!searching && results?.length === 0 && (
-              <div
-                style={{
-                  padding: 20,
-                  color: "var(--text3)",
-                  fontSize: 13,
-                  textAlign: "center",
-                }}
-              >
-                No subtitles found for this language
-              </div>
-            )}
-            {!searching &&
-              results?.map((r) => {
-                const isSelected = selectedSubs.some(
-                  (s) => s.file_id === r.file_id,
-                );
-                const rLang = (r.language || "")
-                  .replace(/[^a-z0-9_-]/gi, "")
-                  .toLowerCase();
-                const alreadyHave = r.file_id
-                  ? existingFileIds.has(r.file_id)
-                  : existingLangs.has(rLang);
-                return (
-                  <div
-                    key={r.file_id}
-                    onClick={() => {
-                      if (alreadyHave) return; // can't re-download same lang (use delete first)
-                      setSelectedSubs((prev) =>
-                        isSelected
-                          ? prev.filter((s) => s.file_id !== r.file_id)
-                          : [...prev, r],
-                      );
-                    }}
-                    style={{
-                      padding: "8px 16px",
-                      cursor: alreadyHave ? "default" : "pointer",
-                      borderBottom: "1px solid var(--border)",
-                      background: alreadyHave
-                        ? "rgba(255,255,255,0.01)"
-                        : isSelected
-                          ? "rgba(229,9,20,0.07)"
-                          : "transparent",
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      transition: "background 0.1s",
-                      opacity: alreadyHave ? 0.45 : 1,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected && !alreadyHave)
-                        e.currentTarget.style.background = "var(--surface2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = alreadyHave
-                        ? "rgba(255,255,255,0.01)"
-                        : isSelected
-                          ? "rgba(229,9,20,0.07)"
-                          : "transparent";
-                    }}
-                  >
-                    {/* Checkbox */}
-                    <div
+                    {(alreadyHave || isSelected) && <CheckIcon size={10} />}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
                       style={{
-                        width: 15,
-                        height: 15,
-                        borderRadius: 3,
-                        border: `2px solid ${alreadyHave ? "var(--border)" : isSelected ? "var(--red)" : "var(--border)"}`,
-                        background: alreadyHave
-                          ? "var(--surface2)"
-                          : isSelected
-                            ? "var(--red)"
-                            : "transparent",
-                        flexShrink: 0,
-                        marginTop: 3,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
+                        gap: 6,
+                        marginBottom: 2,
+                        flexWrap: "wrap",
                       }}
                     >
-                      {alreadyHave ? (
-                        <span style={{ color: "var(--text3)", fontSize: 9 }}>
-                          ✓
-                        </span>
-                      ) : isSelected ? (
-                        <span style={{ color: "#fff", fontSize: 9 }}>✓</span>
-                      ) : null}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          marginBottom: 2,
-                          flexWrap: "wrap",
-                        }}
+                      <span className="lumen-sub-lang">{r.language}</span>
+                      <span
+                        className={`lumen-badge ${r.via_subdl ? "lumen-badge--info" : "lumen-badge--neutral"}`}
+                        style={{ fontSize: 10, padding: "1px 6px" }}
                       >
+                        {r.via_subdl ? "SubDL" : "Wyzie"}
+                      </span>
+                      {alreadyHave && (
                         <span
                           style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "1px 5px",
-                            borderRadius: 3,
-                            background: "rgba(99,202,183,0.15)",
-                            color: "#63cab7",
-                            border: "1px solid rgba(99,202,183,0.3)",
-                            textTransform: "uppercase",
+                            fontSize: 11,
+                            color: "var(--text3)",
+                            fontStyle: "italic",
                           }}
                         >
-                          {r.language}
+                          already downloaded
                         </span>
+                      )}
+                      {r.hearing_impaired && (
                         <span
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: "1px 5px",
-                            borderRadius: 3,
-                            background: r.via_subdl
-                              ? "rgba(99,149,255,0.15)"
-                              : "rgba(180,130,255,0.15)",
-                            color: r.via_subdl ? "#6395ff" : "#b482ff",
-                            border: `1px solid ${r.via_subdl ? "rgba(99,149,255,0.3)" : "rgba(180,130,255,0.3)"}`,
-                            textTransform: "uppercase",
-                          }}
+                          style={{ fontSize: 10, color: "var(--text3)" }}
+                          title="Hearing impaired"
                         >
-                          {r.via_subdl ? "SubDL" : "Wyzie"}
+                          <AccessibilityIcon size={11} />
                         </span>
-                        {alreadyHave && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: "var(--text3)",
-                              fontStyle: "italic",
-                            }}
-                          >
-                            already downloaded
-                          </span>
-                        )}
-                        {r.hearing_impaired && (
-                          <span
-                            style={{ fontSize: 10, color: "var(--text3)" }}
-                            title="HI"
-                          >
-                            ♿
-                          </span>
-                        )}
-                        {r.ai_translated && (
-                          <span
-                            style={{ fontSize: 10, color: "var(--text3)" }}
-                            title="AI"
-                          >
-                            🤖
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {r.release ||
-                          r.file_name ||
-                          `${r.language?.toUpperCase()} subtitle`}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text3)" }}>
-                        {r.uploader} ·{" "}
-                        {(r.download_count || 0).toLocaleString()} downloads
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
+                      )}
+                      {r.ai_translated && (
+                        <span
+                          style={{ fontSize: 10, color: "var(--text3)" }}
+                          title="AI translated"
+                        >
+                          <BotIcon size={11} />
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 13,
+                        color: "var(--text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {r.release ||
+                        r.file_name ||
+                        `${r.language?.toUpperCase()} subtitle`}
+                    </span>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--text3)" }}>
+                      {r.uploader} · {(r.download_count || 0).toLocaleString()}{" "}
+                      downloads
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+        </div>
 
-          {/* Footer */}
-          <div
-            style={{
-              padding: "12px 20px",
-              borderTop: "1px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flexShrink: 0,
-            }}
-          >
-            {done ? (
-              <span style={{ fontSize: 13, color: "#48c774", fontWeight: 600 }}>
-                ✓ Subtitles downloaded!
-              </span>
-            ) : (
-              <>
-                <button
-                  className="btn btn-primary"
-                  disabled={
-                    downloading || selectedSubs.length === 0 || !dl.filePath
-                  }
-                  onClick={handleDownload}
-                  style={{
-                    opacity: downloading || selectedSubs.length === 0 ? 0.5 : 1,
-                  }}
-                >
+        {/* Footer */}
+        <div className="lumen-dialog__footer">
+          {done ? (
+            <span
+              role="status"
+              style={{
+                fontSize: 13,
+                color: "var(--success)",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <CheckIcon size={15} />
+              Subtitles downloaded
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary btn--sm"
+                disabled={
+                  busy || selectedSubs.length === 0 || !dl.filePath
+                }
+                onClick={handleDownload}
+                style={{
+                  opacity: downloading || selectedSubs.length === 0 ? 0.5 : 1,
+                }}
+              >
+                <DownloadIcon size={14} />
+                <span>
                   {downloading
                     ? "Downloading…"
                     : selectedSubs.length > 0
-                      ? `↓ Download (${selectedSubs.length})`
+                      ? `Download (${selectedSubs.length})`
                       : "Select subtitles above"}
-                </button>
-                {!dl.filePath && (
-                  <span style={{ fontSize: 12, color: "var(--red)" }}>
-                    No file path, needs completed download
-                  </span>
-                )}
-                {dlError && (
-                  <span style={{ fontSize: 12, color: "var(--red)" }}>
-                    ⚠ {dlError}
-                  </span>
-                )}
-              </>
-            )}
-            <div style={{ flex: 1 }} />
-            <button className="btn btn-ghost" onClick={onClose}>
-              Close
-            </button>
-          </div>
+                </span>
+              </button>
+              {!dl.filePath && (
+                <span style={{ fontSize: 12, color: "var(--red)" }}>
+                  Needs completed download
+                </span>
+              )}
+              {dlError && (
+                <span
+                  role="alert"
+                  style={{
+                    fontSize: 12,
+                    color: "var(--red)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <WarningIcon size={13} />
+                  {dlError}
+                </span>
+              )}
+            </>
+          )}
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="btn btn-ghost btn--sm"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Close
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

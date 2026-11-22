@@ -12,6 +12,10 @@ const {
 } = require("electron");
 const path = require("path");
 
+// The app was renamed to Lumen; keep the original data folder so saved
+// titles, progress and settings carry over.
+app.setPath("userData", path.join(app.getPath("appData"), "streambert"));
+
 // -- RAM / performance flags ---------------------------------------------------
 // Low-RAM mode is ON by default. Disable it with STREAMBERT_LOW_RAM=0.
 if (process.env.STREAMBERT_LOW_RAM === undefined) {

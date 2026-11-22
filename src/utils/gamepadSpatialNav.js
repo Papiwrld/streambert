@@ -7,11 +7,12 @@
 // inside it) from navigation. Add `data-gamepad-close` to a modal's
 // close/cancel button so the B button can find it reliably.
 
+import { dismissActiveModal, getActiveModal } from "./useModal";
+
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "button:not(:disabled)",
   '[role="button"]:not([aria-disabled="true"])',
-  ".card",
   ".sidebar-btn",
   '[tabindex]:not([tabindex="-1"])',
   "input:not([disabled])",
@@ -25,7 +26,8 @@ let currentEl = null;
 
 function isVisible(el) {
   if (!el || !(el instanceof HTMLElement)) return false;
-  if (el.closest("[data-gamepad-ignore]")) return false;
+  if (el.closest('[data-gamepad-ignore], [inert], [hidden], [aria-hidden="true"]')) return false;
+  if (el.matches(':disabled, [aria-disabled="true"]')) return false;
   const style = getComputedStyle(el);
   if (style.visibility === "hidden" || style.display === "none") return false;
   if (el.offsetParent === null && style.position !== "fixed") return false;
@@ -63,12 +65,21 @@ function isModalRoot(el) {
     rect.height >= window.innerHeight * 0.6;
 }
 
-function getScopeRoot() {
+function getOverlayRoot() {
   const overlays = Array.from(
     document.querySelectorAll('[class*="overlay"]'),
   ).filter((el) => isVisible(el) && isModalRoot(el));
   if (overlays.length === 0) return document;
   return overlays[overlays.length - 1];
+}
+
+function getActiveMenu(scope) {
+  return Array.from(scope.querySelectorAll('.media-card-menu[role="menu"]')).findLast(isVisible);
+}
+
+function getScopeRoot() {
+  const scope = getActiveModal() ?? getOverlayRoot();
+  return getActiveMenu(scope) ?? scope;
 }
 
 function getCandidates() {
@@ -94,10 +105,18 @@ function clearHighlight() {
   currentEl?.classList.remove(FOCUS_CLASS);
 }
 
+function clearHighlightOnFocusChange(event) {
+  if (event.target !== currentEl) clearGamepadFocus();
+}
+
 export function setGamepadFocus(el, { scroll = true } = {}) {
   clearHighlight();
   currentEl = el || null;
-  if (!currentEl) return;
+  if (!currentEl) {
+    document.removeEventListener("focusin", clearHighlightOnFocusChange);
+    return;
+  }
+  document.addEventListener("focusin", clearHighlightOnFocusChange);
   currentEl.classList.add(FOCUS_CLASS);
   try {
     currentEl.focus?.({ preventScroll: true });
@@ -106,18 +125,18 @@ export function setGamepadFocus(el, { scroll = true } = {}) {
     currentEl.scrollIntoView?.({
       block: "nearest",
       inline: "nearest",
-      behavior: "smooth",
+      behavior: "auto",
     });
   }
 }
 
 export function getGamepadFocus() {
-  return currentEl && document.contains(currentEl) ? currentEl : null;
+  return currentEl?.isConnected && isVisible(currentEl) && getScopeRoot().contains(currentEl)
+    ? currentEl : null;
 }
 
 export function clearGamepadFocus() {
-  clearHighlight();
-  currentEl = null;
+  setGamepadFocus(null);
 }
 
 export function confirmGamepadFocus() {
@@ -130,7 +149,15 @@ export function confirmGamepadFocus() {
 // Best-effort dismiss for the B button while a modal is open. Returns false
 // if there's nothing to dismiss, so the caller can fall back to page-back.
 export function dismissActiveOverlay() {
-  const root = getScopeRoot();
+  const scope = getActiveModal() ?? getOverlayRoot();
+  const menu = getActiveMenu(scope);
+  if (menu) {
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    return true;
+  }
+  if (dismissActiveModal()) return true;
+
+  const root = scope;
   if (root === document) return false;
   const closeBtn = root.querySelector(
     '[data-gamepad-close], [aria-label="Close" i], .modal-close, .close-btn',
@@ -213,5 +240,7 @@ export function moveGamepadFocus(direction) {
 
 export function ensureInitialFocus() {
   if (getGamepadFocus()) return;
-  setGamepadFocus(pickInitial(getCandidates()));
+  const candidates = getCandidates();
+  const focused = document.activeElement;
+  setGamepadFocus(candidates.includes(focused) ? focused : pickInitial(candidates));
 }

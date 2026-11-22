@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { StreambertLogo, PlayIcon } from "./Icons";
+import { StreambertLogo, PlayIcon, WarningIcon } from "./Icons";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
@@ -91,7 +91,6 @@ export default function SetupScreen({ onSave, onSkip }) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(null); // { title, body }
   const inputRef = useRef(null);
-  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -121,7 +120,7 @@ export default function SetupScreen({ onSave, onSkip }) {
         <div className="apikey-logo">
           <StreambertLogo />
         </div>
-        <div className="apikey-title">STREAMBERT</div>
+        <div className="apikey-title">Lumen</div>
         <p className="apikey-sub">
           Enter your <strong>free</strong> TMDB{" "}
           <strong>Read Access Token</strong> to get started.
@@ -138,7 +137,7 @@ export default function SetupScreen({ onSave, onSkip }) {
           <br />
           <ExternalLink
             className="apikey-link"
-            href="https://github.com/truelockmc/streambert/blob/main/tmdb-tutorial.md"
+            href="https://github.com/Papiwrld/streambert/blob/main/tmdb-tutorial.md"
           >
             Step-by-step guide on how to get that Token
           </ExternalLink>
@@ -154,16 +153,17 @@ export default function SetupScreen({ onSave, onSkip }) {
           onKeyDown={(e) => e.key === "Enter" && !checking && handleSubmit()}
           ref={inputRef}
           disabled={checking}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={{
-            borderColor: error ? "#f44336" : focused ? "var(--red)" : undefined,
-          }}
         />
 
         {error && (
           <div className="apikey-error-box">
-            <div className="apikey-error-title">⚠ {error.title}</div>
+            <div
+              className="apikey-error-title"
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <WarningIcon size={15} />
+              <span>{error.title}</span>
+            </div>
             <div className="apikey-error-body">{error.body}</div>
           </div>
         )}

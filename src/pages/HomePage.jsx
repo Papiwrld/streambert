@@ -1,12 +1,23 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import MediaCard from "../components/MediaCard";
-import TrendingCarousel from "../components/TrendingCarousel";
-import { PlayIcon, StarIcon } from "../components/Icons";
+import MediaRow, { HomeSkeleton } from "../components/MediaRow";
+import TitleArt from "../components/TitleArt";
+import HeroTrailer from "../components/HeroTrailer";
+import {
+  PlayIcon,
+  StarIcon,
+  InfoIcon,
+  WifiOffIcon,
+  BookmarkIcon,
+  BookmarkFillIcon,
+} from "../components/Icons";
 import { imgUrl, tmdbFetch } from "../utils/api";
 import { useRatings, getRatingForItem } from "../utils/useRatings";
 import { isRestricted } from "../utils/ageRating";
 import { storage } from "../utils/storage";
+import { getThumbs } from "../utils/thumbs";
 import { loadHomeLayout, loadHomeViewMode } from "../utils/homeLayout";
+import "./browseSurfaces.css";
 
 /**
  * Extract up to `count` unique, recently watched items from the user's
@@ -32,6 +43,8 @@ function getRecentHistoryItems(history, count = 5) {
   return unique;
 }
 
+const PERSONAL_SWAP_MS = 2000;
+
 export default function HomePage({
   trending,
   trendingTV,
@@ -46,8 +59,19 @@ export default function HomePage({
   onMarkUnwatched,
   history,
   apiKey,
+  savedList = [],
+  isSaved,
+  onToggleSave,
+  onRemoveContinue,
+  onOpenSettings,
 }) {
-  const hero = trending[0];
+  const heroRef = useRef(null);
+  const [recsReady, setRecsReady] = useState(
+    () => !apiKey || !history || history.length === 0,
+  );
+  const [heroPick, setHeroPick] = useState(null);
+  const [top10Items, setTop10Items] = useState([]);
+  const [ambient, setAmbient] = useState(null);
 
   const [recommendedItems, setRecommendedItems] = useState([]);
   const [topRatedItems, setTopRatedItems] = useState([]);
@@ -66,11 +90,21 @@ export default function HomePage({
       ...trendingTV.map((i) => ({ ...i, media_type: "tv" })),
       ...recommendedItems,
       ...topRatedItems,
+      ...top10Items,
+      ...savedList,
     ],
-    [inProgress, trending, trendingTV, recommendedItems, topRatedItems],
+    [
+      inProgress,
+      trending,
+      trendingTV,
+      recommendedItems,
+      topRatedItems,
+      top10Items,
+      savedList,
+    ],
   );
 
-  const { ratingsMap, ageLimitSetting } = useRatings(allItems);
+  const { ratingsMap, ageLimitSetting } = useRatings(allItems, offline ? null : apiKey);
 
   const getRating = useCallback(
     (item) => getRatingForItem(item, ratingsMap),
@@ -81,6 +115,113 @@ export default function HomePage({
       isRestricted(getRatingForItem(item, ratingsMap).minAge, ageLimitSetting),
     [ratingsMap, ageLimitSetting],
   );
+
+  const hero = !offline && apiKey && heroPick && !itemRestricted(heroPick) ? heroPick : null;
+  const heroType = hero?.media_type === "tv" ? "tv" : "movie";
+
+  // Average colour of the hero backdrop, used to tint the page behind the rows
+  const heroBackdrop = hero?.backdrop_path;
+  useEffect(() => {
+    setAmbient(null);
+    if (!heroBackdrop) return;
+    let alive = true;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = c.height = 8;
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, 8, 8);
+        const d = ctx.getImageData(0, 0, 8, 8).data;
+        let r = 0, g = 0, b = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          r += d[i];
+          g += d[i + 1];
+          b += d[i + 2];
+        }
+        const n = d.length / 4;
+        if (alive) setAmbient(`rgb(${(r / n) | 0} ${(g / n) | 0} ${(b / n) | 0})`);
+      } catch {
+        /* tainted canvas: keep the neutral background */
+      }
+    };
+    img.src = imgUrl(heroBackdrop, "w300");
+    return () => {
+      alive = false;
+    };
+  }, [heroBackdrop]);
+
+  // Hero: shown as soon as discovery data arrives so Home is never blank.
+  // If that first pick had to come from trending because recommendations
+  // were still loading, it's upgraded to a personal pick when they land,
+  // as long as that happens within PERSONAL_SWAP_MS (before the trailer
+  // starts). Only settled picks are pinned for the session.
+  const mountedAt = useRef(Date.now());
+  useEffect(() => {
+    if (!apiKey || offline) return;
+    const upgrade =
+      hero &&
+      hero.provisional &&
+      recsReady &&
+      recommendedItems.length > 0 &&
+      Date.now() - mountedAt.current < PERSONAL_SWAP_MS;
+    if (hero && !upgrade) return;
+    if (!hero && !recsReady && !trending.length && !trendingTV.length) return;
+
+    const key = (i) => `${i.media_type}_${i.id}`;
+    const watchedKeys = new Set(
+      (history || []).map((h) => `${h.media_type || "movie"}_${h.id}`),
+    );
+    const usable = (i) =>
+      i.backdrop_path &&
+      i.overview &&
+      !watchedKeys.has(key(i)) &&
+      !disliked.has(key(i)) &&
+      !itemRestricted(i);
+    const trend = [
+      ...trending.map((i) => ({ ...i, media_type: "movie" })),
+      ...trendingTV.map((i) => ({ ...i, media_type: "tv" })),
+    ];
+    // Interleave recommended (personal) and trending so both get a turn;
+    // an upgrade only considers the personal ones.
+    const pool = [];
+    for (let i = 0; i < Math.max(recommendedItems.length, trend.length); i++) {
+      if (recommendedItems[i]) pool.push(recommendedItems[i]);
+      if (trend[i] && !upgrade) pool.push(trend[i]);
+    }
+    const seenIds = new Set();
+    const candidates = pool.filter((i) => {
+      if (!usable(i) || seenIds.has(key(i))) return false;
+      seenIds.add(key(i));
+      return true;
+    });
+    if (candidates.length === 0) {
+      if (upgrade) return;
+      const fallback = trend.find((item) => item.backdrop_path && !itemRestricted(item));
+      if (fallback) setHeroPick({ ...fallback, provisional: !recsReady });
+      return;
+    }
+    // Same pick for the whole session unless the user has watched something new
+    const lastWatchedAt = history?.[0]?.watchedAt;
+    const session = window.__lumenHero;
+    let pick = session && session.lastWatchedAt === lastWatchedAt
+      ? candidates.find((c) => key(c) === session.key)
+      : null;
+    if (!pick) {
+      const recent = storage.get("heroSeen") || [];
+      pick = candidates.find((c) => !recent.includes(key(c))) || candidates[0];
+      if (recsReady) {
+        storage.set("heroSeen", [key(pick), ...recent].slice(0, 12));
+        window.__lumenHero = { lastWatchedAt, key: key(pick) };
+      }
+    }
+    setHeroPick({
+      ...pick,
+      recommended: recommendedItems.some((item) => key(item) === key(pick)),
+      provisional: !recsReady,
+    });
+  }, [hero, apiKey, offline, recsReady, trending, trendingTV, recommendedItems, history, itemRestricted]);
 
   // Enrich ratingsMap with restricted flag for carousels
   const enrichedRatingsMap = useMemo(() => {
@@ -97,13 +238,48 @@ export default function HomePage({
     return recommendedItems.filter((item) => !itemRestricted(item));
   }, [recommendedItems, itemRestricted]);
 
+  // Only the titles recommendations are built from; reordering history or
+  // replaying the same title doesn't refetch.
+  // Thumbs ratings: read on mount (Home remounts whenever you come back to it)
+  const [thumbs] = useState(getThumbs);
+  const disliked = useMemo(
+    () => new Set(Object.keys(thumbs).filter((k) => thumbs[k] < 0)),
+    [thumbs],
+  );
+  // Sources for recommendations: up to two liked titles, then recent
+  // watches, never anything rated thumbs down.
+  const recSources = useMemo(() => {
+    const liked = Object.keys(thumbs)
+      .filter((k) => thumbs[k] > 0)
+      .slice(-2)
+      .map((k) => {
+        const [type, id] = k.split("_");
+        return { id: Number(id), media_type: type };
+      });
+    const out = [];
+    const seen = new Set();
+    for (const h of [...liked, ...getRecentHistoryItems(history, 5)]) {
+      const k = `${h.media_type || "movie"}_${h.id}`;
+      if (seen.has(k) || disliked.has(k)) continue;
+      seen.add(k);
+      out.push(h);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }, [thumbs, disliked, history]);
+  const recSourceKey = recSources
+    .map((h) => `${h.media_type || "movie"}_${h.id}`)
+    .join(",");
+
   // Fetch personalised recommendations from multiple recent history items
   useEffect(() => {
-    if (!apiKey || offline || !history || history.length === 0) return;
-    const sources = getRecentHistoryItems(history, 5);
-    if (sources.length === 0) return;
-
-    const controller = new AbortController();
+    const sources = recSources;
+    if (!apiKey || offline || !sources.length) {
+      setRecsReady(true);
+      return;
+    }
+    const fallback = setTimeout(() => setRecsReady(true), 3000);
+    let active = true;
 
     // Build a Set of already-watched TMDB ids for dedup
     const watchedIds = new Set(
@@ -113,19 +289,16 @@ export default function HomePage({
     // For each source, try /recommendations first, fall back to /similar
     const fetches = sources.map((source) => {
       const type = source.media_type === "tv" ? "tv" : "movie";
-      return tmdbFetch(`/${type}/${source.id}/recommendations`, apiKey, {
-        signal: controller.signal,
-      })
+      return tmdbFetch(`/${type}/${source.id}/recommendations`, apiKey)
         .then((data) => {
+          if (!active) return [];
           const results = (data.results || []).map((i) => ({
             ...i,
             media_type: type,
           }));
           if (results.length > 0) return results;
           // Fall back to /similar if /recommendations returned nothing
-          return tmdbFetch(`/${type}/${source.id}/similar`, apiKey, {
-            signal: controller.signal,
-          }).then((d) =>
+          return tmdbFetch(`/${type}/${source.id}/similar`, apiKey).then((d) =>
             (d.results || []).map((i) => ({ ...i, media_type: type })),
           );
         })
@@ -134,6 +307,7 @@ export default function HomePage({
 
     Promise.all(fetches)
       .then((arrays) => {
+        if (!active) return;
         // Interleave results from each source for variety
         const merged = [];
         const maxLen = Math.max(...arrays.map((a) => a.length));
@@ -152,16 +326,46 @@ export default function HomePage({
           return true;
         });
 
-        setRecommendedItems(deduped.slice(0, 20));
+        setRecommendedItems(
+          deduped
+            .filter((item) => !disliked.has(`${item.media_type}_${item.id}`))
+            .slice(0, 20),
+        );
+        setRecsReady(true);
       })
       .catch((e) => {
-        if (e.name !== "AbortError")
-          console.warn("Recommendations fetch failed", e);
+        if (active) setRecsReady(true);
       });
 
-    return () => controller.abort();
+    return () => {
+      clearTimeout(fallback);
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, offline, history?.length]);
+  }, [apiKey, offline, recSourceKey]);
+
+  // Top 10 today across movies and series
+  useEffect(() => {
+    if (!apiKey || offline) return;
+    let alive = true;
+    tmdbFetch("/trending/all/day", apiKey)
+      .then((d) => {
+        if (!alive) return;
+        setTop10Items(
+          (d?.results || [])
+            .filter(
+              (r) =>
+                (r.media_type === "movie" || r.media_type === "tv") &&
+                r.poster_path,
+            )
+            .slice(0, 10),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [apiKey, offline]);
 
   // Fetch top rated movies + TV, merge and shuffle
   useEffect(() => {
@@ -196,6 +400,29 @@ export default function HomePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, offline]);
 
+  // Recently watched: latest entry per title (movies and whole series), newest
+  // first, including finished ones. Skips what Continue watching already shows.
+  const recentItems = useMemo(() => {
+    const inRow = new Set(inProgress.map((i) => `${i.media_type}_${i.id}`));
+    const seen = new Set();
+    const out = [];
+    for (const h of [...(history || [])].sort((a, b) => b.watchedAt - a.watchedAt)) {
+      const type = h.media_type === "tv" ? "tv" : "movie";
+      const k = `${type}_${h.id}`;
+      if (seen.has(k) || (rowVisible.continue && inRow.has(k))) continue;
+      seen.add(k);
+      out.push({
+        id: h.id,
+        title: type === "movie" ? h.title : undefined,
+        name: type === "tv" ? h.title : undefined,
+        poster_path: h.poster_path,
+        media_type: type,
+      });
+      if (out.length >= 20) break;
+    }
+    return out;
+  }, [history, inProgress, rowVisible.continue]);
+
   // Stable pre-built item arrays for carousels, capped at 10
   const trendingMovieItems = useMemo(
     () => trending.slice(0, 10).map((i) => ({ ...i, media_type: "movie" })),
@@ -206,237 +433,244 @@ export default function HomePage({
     [trendingTV],
   );
 
+  // Shared per-card props for rows and grids
+  const cardProps = useCallback(
+    (item) => {
+      const type = item.media_type === "tv" ? "tv" : "movie";
+      const rd = enrichedRatingsMap[`${type}_${item.id}`] || {};
+      return {
+        progress: 0,
+        watched,
+        onMarkWatched,
+        onMarkUnwatched,
+        ageRating: rd.cert,
+        restricted: rd.restricted,
+        isSaved: isSaved ? isSaved(item) : false,
+        onToggleSave,
+      };
+    },
+    [enrichedRatingsMap, watched, onMarkWatched, onMarkUnwatched, isSaved, onToggleSave],
+  );
+
+  const continueProps = useCallback(
+    (item) => {
+      const pk =
+        item.media_type === "movie"
+          ? `movie_${item.id}`
+          : `tv_${item.id}_s${item.season}e${item.episode}`;
+      const r = getRating(item);
+      return {
+        progress: progress[pk] || 0,
+        watched,
+        onMarkWatched,
+        onMarkUnwatched,
+        ageRating: r.cert,
+        restricted: itemRestricted(item),
+        onRemoveFromRow: onRemoveContinue,
+        onResume: offline ? undefined : () => onSelect({ ...item, autoplay: true }),
+        isSaved: isSaved ? isSaved(item) : false,
+        onToggleSave,
+      };
+    },
+    [
+      getRating,
+      itemRestricted,
+      progress,
+      watched,
+      onMarkWatched,
+      onMarkUnwatched,
+      onRemoveContinue,
+      offline,
+      onSelect,
+      isSaved,
+      onToggleSave,
+    ],
+  );
+
+  // Rows render as horizontal scrollers by default, or as a grid in list mode
+  const renderRow = (key, title, items, propsFor = cardProps, ranked = false) => {
+    if (!items || items.length === 0) return null;
+    if (viewMode === "list") {
+      return (
+        <section key={key} className="section" aria-label={title}>
+          <h2 className="section-title">{title}</h2>
+          <div className="cards-grid">
+            {items.map((item) => (
+              <MediaCard
+                key={`${item.media_type}_${item.id}_${item.season ?? ""}_${item.episode ?? ""}`}
+                item={item}
+                onClick={() => onSelect(item)}
+                onPlay={apiKey && !offline ? () => onSelect({ ...item, autoplay: true }) : undefined}
+                {...propsFor(item)}
+              />
+            ))}
+          </div>
+        </section>
+      );
+    }
+    return (
+      <MediaRow
+        key={key}
+        title={title}
+        items={items}
+        onSelect={onSelect}
+        getCardProps={propsFor}
+        apiKey={offline ? undefined : apiKey}
+        ranked={ranked}
+        isSaved={isSaved}
+        onToggleSave={onToggleSave}
+      />
+    );
+  };
+
+  const visibleTop10 = top10Items.filter((item) => !itemRestricted(item));
+  const visibleTrendingMovies = trendingMovieItems.filter((item) => !itemRestricted(item));
+  const visibleTrendingTV = trendingTVItems.filter((item) => !itemRestricted(item));
+  const visibleTopRated = topRatedItems.filter((item) => !itemRestricted(item));
+
+  const rowContent = {
+    continue: () =>
+      renderRow("continue", "Continue watching", inProgress, continueProps),
+    recent: () => renderRow("recent", "Recently watched", recentItems),
+    top10: () =>
+      renderRow(
+        "top10",
+        "Top 10 today",
+        visibleTop10,
+        cardProps,
+        true,
+      ),
+    myList: () => renderRow("myList", "My list", savedList),
+    recommended: () =>
+      renderRow("recommended", "Recommended for you", filteredRecommendedItems),
+    trendingMovies: () =>
+      renderRow("trendingMovies", "Trending movies", visibleTrendingMovies),
+    trendingTV: () => renderRow("trendingTV", "Trending series", visibleTrendingTV),
+    topRated: () => renderRow("topRated", "Top rated", visibleTopRated),
+  };
+
+  const heroYear = (hero?.release_date || hero?.first_air_date || "").slice(0, 4);
+  const hasDiscovery = !!(apiKey && (hero || visibleTrendingMovies.length || visibleTrendingTV.length ||
+    visibleTop10.length || visibleTopRated.length || filteredRecommendedItems.length));
+  const localRows = ["continue", "recent", "myList"];
+
   return (
-    <div className="fade-in">
-      {/* ── Offline ── */}
+    <div
+      className="fade-in home"
+      style={ambient ? { "--ambient": ambient } : undefined}
+    >
       {offline && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: "60vh",
-            gap: 16,
-            color: "var(--text2)",
-          }}
-        >
-          <div style={{ fontSize: 48 }}>📡</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: "var(--text)" }}>
-            No internet connection
-          </div>
-          <div style={{ fontSize: 14, color: "var(--text3)" }}>
-            Trending and search require an internet connection. Your downloads
-            and library still work offline.
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ marginTop: 8 }}
-            onClick={onRetry}
-          >
-            Retry
-          </button>
+        <div className="empty-state home-status">
+          <WifiOffIcon />
+          <h2>You're offline</h2>
+          <p>
+            Browsing and search need a connection. Downloads and your library
+            still work.
+          </p>
         </div>
       )}
 
-      {!offline && loading && (
-        <div className="loader">
-          <div className="spinner" />
-        </div>
+      {!offline && loading && !hasDiscovery && <HomeSkeleton />}
+      {/* Hold the hero's space while recommendations decide what it shows */}
+      {!hero && apiKey && !offline && !recsReady && hasDiscovery && (
+        <div className="hero skeleton" aria-hidden="true" />
       )}
 
-      {/* ── Hero (always first) ── */}
-      {!loading && hero && (
-        <div className="hero">
+      {hero && (
+        <header className="hero" ref={heroRef}>
           <div
+            key={`${heroType}_${hero.id}`}
             className="hero-bg"
+            aria-hidden="true"
             style={{
-              backgroundImage: `url(${imgUrl(hero.backdrop_path, "original")})`,
+              backgroundImage: `url(${imgUrl(hero.backdrop_path, "w1280")})`,
             }}
+          />
+          <HeroTrailer
+            movieId={hero.id}
+            type={heroType}
+            apiKey={apiKey}
+            containerRef={heroRef}
           />
           <div className="hero-gradient" />
           <div className="hero-content">
-            <div className="hero-type">Trending · Movie</div>
-            <div className="hero-title">{hero.title || hero.name}</div>
-            <div className="hero-meta">
-              <span className="hero-rating">
-                <StarIcon /> {hero.vote_average?.toFixed(1)}
-              </span>
-              <span>{hero.release_date?.slice(0, 4)}</span>
+            <div className="hero-type">
+              {hero.recommended
+                ? "Recommended for you"
+                : "Trending now"}
             </div>
-            <div className="hero-overview">{hero.overview}</div>
+            <TitleArt
+              type={heroType}
+              id={hero.id}
+              apiKey={apiKey}
+              title={hero.title || hero.name}
+              className="hero-title"
+              size="w780"
+            />
+            <div className="hero-meta">
+              {hero.vote_average > 0 && (
+                <span className="hero-rating">
+                  <StarIcon /> {hero.vote_average.toFixed(1)}
+                </span>
+              )}
+              {heroYear && <span>{heroYear}</span>}
+              <span>{heroType === "tv" ? "Series" : "Movie"}</span>
+            </div>
+            <p className="hero-overview">{hero.overview}</p>
             <div className="hero-actions">
               <button
                 className="btn btn-primary"
-                onClick={() => onSelect(hero)}
+                onClick={() => onSelect({ ...hero, autoplay: true })}
               >
-                <PlayIcon /> Watch Now
+                <PlayIcon /> Play
               </button>
               <button
                 className="btn btn-secondary"
                 onClick={() => onSelect(hero)}
               >
-                More Info
+                <InfoIcon /> More info
               </button>
+              {onToggleSave && (
+                <button
+                  type="button"
+                  className={`icon-action${isSaved?.(hero) ? " is-on" : ""}`}
+                  onClick={() => onToggleSave(hero)}
+                  aria-label={
+                    isSaved?.(hero)
+                      ? "Remove from watchlist"
+                      : "Add to watchlist"
+                  }
+                  aria-pressed={!!isSaved?.(hero)}
+                  title={
+                    isSaved?.(hero) ? "In watchlist" : "Add to watchlist"
+                  }
+                >
+                  {isSaved?.(hero) ? <BookmarkFillIcon /> : <BookmarkIcon />}
+                </button>
+              )}
             </div>
           </div>
+        </header>
+      )}
+
+      {!offline && !loading && recsReady && !hasDiscovery && (
+        <div className="empty-state home-status">
+          <h2>{apiKey ? "Discovery is unavailable" : "Connect TMDB"}</h2>
+          <p>{apiKey ? "Try again to load movies and series." : "Add your TMDB token in Settings to load movies and series."}</p>
+          {apiKey && onRetry && <button className="btn btn-primary" onClick={onRetry}>Try again</button>}
+          {!apiKey && onOpenSettings && (
+            <button className="btn btn-primary" onClick={onOpenSettings}>
+              Open settings
+            </button>
+          )}
         </div>
       )}
 
-      {/* ── Rows in user-configured order ── */}
-      {rowOrder.map((id) => {
-        if (!rowVisible[id]) return null;
-
-        if (id === "continue") {
-          if (inProgress.length === 0) return null;
-          return (
-            <div key="continue" className="section">
-              <div className="section-title">Continue Watching</div>
-              <div className="cards-grid">
-                {inProgress.map((item) => {
-                  const pk =
-                    item.media_type === "movie"
-                      ? `movie_${item.id}`
-                      : `tv_${item.id}_s${item.season}e${item.episode}`;
-                  const r = getRating(item);
-                  const restr = itemRestricted(item);
-                  return (
-                    <MediaCard
-                      key={`${item.media_type}_${item.id}`}
-                      item={item}
-                      onClick={() => onSelect(item)}
-                      progress={progress[pk] || 0}
-                      watched={watched}
-                      onMarkWatched={onMarkWatched}
-                      onMarkUnwatched={onMarkUnwatched}
-                      ageRating={r.cert}
-                      restricted={restr}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        // Render a section as a flat cards-grid (list view)
-        const renderList = (key, title, titleHighlight, items) => {
-          if (!items || items.length === 0) return null;
-          return (
-            <div key={key} className="section">
-              <div className="section-title">
-                {titleHighlight ? (
-                  <>
-                    {title}&nbsp;
-                    <span style={{ color: "var(--red)" }}>
-                      {titleHighlight}
-                    </span>
-                  </>
-                ) : (
-                  title
-                )}
-              </div>
-              <div className="cards-grid">
-                {items.map((item) => {
-                  const type = item.media_type === "tv" ? "tv" : "movie";
-                  const rk = `${type}_${item.id}`;
-                  const rd = enrichedRatingsMap[rk] || {};
-                  return (
-                    <MediaCard
-                      key={`${item.media_type}_${item.id}`}
-                      item={item}
-                      onClick={() => onSelect(item)}
-                      progress={0}
-                      watched={watched}
-                      onMarkWatched={onMarkWatched}
-                      onMarkUnwatched={onMarkUnwatched}
-                      ageRating={rd.cert}
-                      restricted={rd.restricted}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        };
-
-        if (id === "recommended") {
-          if (filteredRecommendedItems.length === 0) return null;
-          if (viewMode === "list")
-            return renderList(
-              "recommended",
-              "Recommended for You",
-              null,
-              filteredRecommendedItems,
-            );
-          return (
-            <TrendingCarousel
-              key="recommended"
-              items={filteredRecommendedItems}
-              title="Recommended for You"
-              onSelect={onSelect}
-              ratingsMap={enrichedRatingsMap}
-            />
-          );
-        }
-
-        if (id === "trendingMovies") {
-          if (trendingMovieItems.length === 0) return null;
-          if (viewMode === "list")
-            return renderList(
-              "trendingMovies",
-              "Trending Movies",
-              null,
-              trendingMovieItems,
-            );
-          return (
-            <TrendingCarousel
-              key="trendingMovies"
-              items={trendingMovieItems}
-              title="Trending Movies"
-              onSelect={onSelect}
-              ratingsMap={enrichedRatingsMap}
-            />
-          );
-        }
-
-        if (id === "trendingTV") {
-          if (trendingTVItems.length === 0) return null;
-          if (viewMode === "list")
-            return renderList(
-              "trendingTV",
-              "Trending Series",
-              null,
-              trendingTVItems,
-            );
-          return (
-            <TrendingCarousel
-              key="trendingTV"
-              items={trendingTVItems}
-              title="Trending Series"
-              onSelect={onSelect}
-              ratingsMap={enrichedRatingsMap}
-            />
-          );
-        }
-
-        if (id === "topRated") {
-          if (topRatedItems.length === 0) return null;
-          if (viewMode === "list")
-            return renderList("topRated", "Top Rated", null, topRatedItems);
-          return (
-            <TrendingCarousel
-              key="topRated"
-              items={topRatedItems}
-              title="Top Rated"
-              onSelect={onSelect}
-              ratingsMap={enrichedRatingsMap}
-            />
-          );
-        }
-
-        return null;
-      })}
+      <div className="home-rows">
+        {rowOrder.map((id) =>
+          rowVisible[id] && rowContent[id] && (localRows.includes(id) || (apiKey && !offline)) ? rowContent[id]() : null,
+        )}
+      </div>
     </div>
   );
 }

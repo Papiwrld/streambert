@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { CloseIcon, ExternalLinkIcon } from "./Icons";
 import { storage } from "../utils/storage";
+import { useModal } from "../utils/useModal";
 
 export const DEFAULT_INVIDIOUS_BASE = "https://inv.nadeko.net";
 
-const FALLBACK_INSTANCES = [
+export const FALLBACK_INSTANCES = [
   "https://invidious.privacyredirect.com",
   "https://inv.tux.pizza",
   "https://yt.cdaut.de",
@@ -22,7 +23,7 @@ export function getInvidiousBase() {
   );
 }
 
-const DETECT_BOT_JS = `
+export const DETECT_BOT_JS = `
 (function() {
   var title = (document.title || '').toLowerCase()
   var body  = (document.body  && document.body.innerText || '').toLowerCase()
@@ -33,7 +34,7 @@ const DETECT_BOT_JS = `
 `;
 
 // Hide the built-in Invidious button, detect video end
-const SETUP_JS = `
+export const SETUP_JS = `
 (function() {
   if (window.__trailerSetup) return
   window.__trailerSetup = true
@@ -92,13 +93,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
     tryNextInstance();
   }, [tryNextInstance]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  const { dialogProps, backdropProps, titleId } = useModal(onClose);
 
   // Open current video on Invidious in system browser
   const openInBrowser = () => {
@@ -159,14 +154,15 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
   }, [currentSrc, tryNextInstance, onClose]);
 
   return (
-    <div className="trailer-overlay" onClick={onClose}>
-      <div className="trailer-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="trailer-overlay" {...backdropProps}>
+      <div className="trailer-modal" {...dialogProps} aria-labelledby={titleId}>
         <div className="trailer-modal-header">
-          <span className="trailer-modal-title">
-            🎬 {title} — Official Trailer
+          <span id={titleId} className="trailer-modal-title">
+            {title} · Trailer
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
+              type="button"
               onClick={openInBrowser}
               title="Open in browser"
               className="trailer-openbrowser-btn"
@@ -175,9 +171,12 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
               Open in Browser
             </button>
             <button
+              type="button"
               className="trailer-close-btn"
+              data-modal-initial-focus
               onClick={onClose}
               title="Close"
+              aria-label="Close"
             >
               <CloseIcon />
             </button>
@@ -189,6 +188,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
         >
           {(statusMsg || failed) && (
             <div
+              role="status"
               style={{
                 position: "absolute",
                 inset: 0,
@@ -198,7 +198,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
                 alignItems: "center",
                 justifyContent: "center",
                 background: "#000",
-                color: failed ? "#ff3860" : "rgba(255,255,255,0.6)",
+                color: failed ? "#ef5b61" : "rgba(255,255,255,0.6)",
                 fontSize: 14,
                 textAlign: "center",
                 padding: "0 32px",
@@ -222,6 +222,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
           {currentSrc && (
             <webview
               ref={webviewRef}
+              title={`${title} trailer`}
               src={currentSrc}
               partition="persist:trailer"
               allowpopups="false"

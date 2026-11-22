@@ -58,6 +58,7 @@ export const STORAGE_KEYS = {
   HOME_ROW_ORDER: "homeRowOrder",
   HOME_ROW_VISIBLE: "homeRowVisible",
   HOME_VIEW_MODE: "homeViewMode",
+  HERO_TRAILER: "heroTrailer",
   AUTO_CHECK_UPDATES: "autoCheckUpdates",
   INVIDIOUS_BASE: "invidiousBase",
   // Subtitle settings
@@ -105,8 +106,6 @@ export const STORAGE_KEYS = {
   // Controller / gamepad navigation
   GAMEPAD_ENABLED: "gamepadEnabled",
 };
-
-export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);
 
 // ── Source failover cache ────────────────────────────────────────────────────
 // HiAnime doesn't always have every episode; rather than nag the user every

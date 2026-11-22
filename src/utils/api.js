@@ -4,7 +4,7 @@ const IMG_BASE = "https://image.tmdb.org/t/p";
 // ── TMDB metadata language ────────────────────────────────────────────────────
 // Read lazily from localStorage so it always reflects the current setting.
 // Falls back to "en-US".
-function getTmdbLanguage() {
+export function getTmdbLanguage() {
   try {
     const raw = localStorage.getItem("streambert_tmdbLang");
     return raw ? JSON.parse(raw) : "en-US";

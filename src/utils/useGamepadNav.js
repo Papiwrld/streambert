@@ -8,6 +8,7 @@ import {
   clearGamepadFocus,
 } from "./gamepadSpatialNav";
 import { isPlayerGamepadActive } from "./gamepadPlayerState";
+import { getActiveModal } from "./useModal";
 
 /**
  * App-wide gamepad → UI navigation. Mount once near the root (App.jsx).
@@ -17,8 +18,7 @@ import { isPlayerGamepadActive } from "./gamepadPlayerState";
  *  B (Xbox) / Circle   → close the open modal, else navigate back
  *  Start                → open search
  *
- * Automatically no-ops whenever a video is playing, since the webview
- * takes over gamepad input for playback controls at that point. When
+ * Lets the webview handle playback controls while no dialog is open. When
  * `enabled` is false (the "controller support" setting is off), no
  * requestAnimationFrame poll loop runs at all.
  */
@@ -43,12 +43,12 @@ export function useGamepadNav({ enabled, onBack, onOpenSearch }) {
           confirmGamepadFocus();
         } else if (i === BTN.B) {
           if (!dismissActiveOverlay()) onBackRef.current?.();
-        } else if (i === BTN.START) {
+        } else if (i === BTN.START && !getActiveModal()) {
           onOpenSearchRef.current?.();
         }
       },
     },
-    () => !isPlayerGamepadActive(),
+    () => getActiveModal() !== null || !isPlayerGamepadActive(),
     enabled, // gate the whole requestAnimationFrame poll loop, not just dispatch
   );
 

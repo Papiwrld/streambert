@@ -43,7 +43,7 @@ export default function WindowTitlebar() {
         height: 32,
         zIndex: 10000,
         background: "var(--bg)",
-        borderBottom: "1px solid var(--border)",
+        borderBottom: "1px solid var(--hairline)",
         display: "flex",
         alignItems: "center",
         userSelect: "none",
@@ -56,8 +56,8 @@ export default function WindowTitlebar() {
         style={{
           paddingLeft: 12, // sit over the sidebar
           fontSize: 12,
-          fontWeight: 700,
-          letterSpacing: 2,
+          fontWeight: 600,
+          letterSpacing: 0,
           color: "var(--text3)",
           fontFamily: "var(--font-display)",
           flexGrow: 1,
@@ -66,7 +66,7 @@ export default function WindowTitlebar() {
           textOverflow: "ellipsis",
         }}
       >
-        STREAMBERT
+        Lumen
       </div>
 
       {/* Window control buttons, NOT draggable */}
@@ -139,7 +139,7 @@ export default function WindowTitlebar() {
         {/* Close */}
         <TitlebarBtn
           onClick={close}
-          hoverBg="rgba(229,9,20,0.85)"
+          hoverBg="var(--red)"
           title="Close"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

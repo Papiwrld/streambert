@@ -1,6 +1,8 @@
+import { PlayIcon, CloseIcon, ArrowUpIcon } from "./components/Icons";
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   useRef,
@@ -33,6 +35,7 @@ import SetupScreen from "./components/SetupScreen";
 import CloseConfirmModal from "./components/CloseConfirmModal";
 import UpdateModal from "./components/UpdateModal";
 import { useGamepadNav } from "./utils/useGamepadNav";
+import { getActiveModal } from "./utils/useModal";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -41,10 +44,46 @@ const TVPage = lazy(() => import("./pages/TVPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
+const BrowsePage = lazy(() => import("./pages/BrowsePage"));
 import {
   checkForUpdatesWithFallback,
   DEFAULT_UPDATE_SOURCE,
 } from "./utils/updates";
+
+function RestorePageScroll({ mainRef, scrollPosition, page, selected }) {
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    const target = scrollPosition.current;
+    if (!main) return;
+    main.scrollTo({ top: target, behavior: "instant" });
+    if (!target || main.scrollTop >= target - 1) return;
+
+    // Pages like Home rebuild their rows asynchronously, so the page is still
+    // too short to reach the old position. Keep retrying as content grows,
+    // until it's reached, the user scrolls themselves, or 2.5s pass.
+    let done = false;
+    const stop = () => {
+      done = true;
+      observer.disconnect();
+      clearTimeout(timer);
+      main.removeEventListener("wheel", stop);
+      main.removeEventListener("touchstart", stop);
+      main.removeEventListener("keydown", stop);
+    };
+    const observer = new ResizeObserver(() => {
+      if (done) return;
+      main.scrollTo({ top: target, behavior: "instant" });
+      if (main.scrollTop >= target - 1) stop();
+    });
+    for (const child of main.children) observer.observe(child);
+    const timer = setTimeout(stop, 2500);
+    main.addEventListener("wheel", stop, { passive: true });
+    main.addEventListener("touchstart", stop, { passive: true });
+    main.addEventListener("keydown", stop);
+    return stop;
+  }, [mainRef, scrollPosition, page, selected]);
+  return null;
+}
 
 export default function App() {
   // apiKey loaded async from secure storage (OS keychain)
@@ -61,9 +100,15 @@ export default function App() {
   );
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [platform, setPlatform] = useState(null);
+  const mainRef = useRef(null);
+  const scrollPosition = useRef(0);
+  // Restore the loaded Browse grid in the same render that restores its scroll position.
+  const browseSnapshot = useRef({});
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Navigation history stack for Ctrl+Z back navigation
   const [navStack, setNavStack] = useState([]);
+  const navStackRef = useRef([]);
 
   const [saved, setSaved] = useState(() => storage.get("saved") || {});
   // Separate order array for drag-and-drop reordering
@@ -662,23 +707,34 @@ export default function App() {
   }, [selected]);
 
   const navigateBack = useCallback(() => {
-    setNavStack((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      setPage(last.page);
-      setSelected(last.selected);
-      if (typeof gc === "function") {
-        requestIdleCallback(() => gc(), { timeout: 2000 });
-      }
-      return prev.slice(0, -1);
-    });
+    // Read and pop from the ref so two presses before a re-render can't
+    // reuse the same entry.
+    const last = navStackRef.current.at(-1);
+    if (!last) return;
+    navStackRef.current = navStackRef.current.slice(0, -1);
+    scrollPosition.current = last.scrollTop;
+    browseSnapshot.current = last.browseSnapshot;
+    setNavStack(navStackRef.current);
+    setPage(last.page);
+    setSelected(last.selected);
+    if (typeof gc === "function") {
+      requestIdleCallback(() => gc(), { timeout: 2000 });
+    }
   }, []);
 
   const navigate = useCallback((pg, data = null) => {
-    setNavStack((prev) => [
-      ...prev,
-      { page: pageRef.current, selected: selectedRef.current },
-    ]);
+    if (pg === pageRef.current && data === selectedRef.current) return;
+    const previous = selectedRef.current;
+    const entry = {
+      page: pageRef.current,
+      selected: previous?.autoplay ? { ...previous, autoplay: false } : previous,
+      scrollTop: mainRef.current?.scrollTop ?? 0,
+      browseSnapshot: browseSnapshot.current,
+    };
+    scrollPosition.current = 0;
+    browseSnapshot.current = {};
+    navStackRef.current = [...navStackRef.current, entry];
+    setNavStack(navStackRef.current);
     setSelected(data);
     setPage(pg);
     setShowSearch(false);
@@ -691,33 +747,47 @@ export default function App() {
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+      if (e.defaultPrevented || getActiveModal()) return;
+      const target = e.target;
+      const tag = (target?.tagName || "").toUpperCase();
+      const isEditing =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        !!target?.isContentEditable;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setShowSearch(true);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         if (pageRef.current === "downloads") {
           e.preventDefault();
           setDlSearchOpen(true);
+        } else if (pageRef.current !== "settings") {
+          e.preventDefault();
+          setShowSearch(true);
         }
       }
       if (e.key === "Escape") {
         setShowSearch(false);
         setShowShortcuts(false);
       }
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        const tag = (e.target?.tagName || "").toUpperCase();
-        if (tag !== "INPUT" && tag !== "TEXTAREA") {
-          e.preventDefault();
-          setShowShortcuts((v) => !v);
-        }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !isEditing) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
       }
-      // Ctrl+Z / Cmd+Z → navigate back
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+      // Ctrl+Z / Cmd+Z → navigate back (skip when editing text)
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === "z" &&
+        !e.shiftKey &&
+        !isEditing
+      ) {
         e.preventDefault();
         navigateBack();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") {
         e.preventDefault();
         window.location.reload();
       }
@@ -939,15 +1009,34 @@ export default function App() {
     [history],
   );
 
+  // Titles the user removed from Continue watching: { [_pk]: removedAt }.
+  // A title comes back if it's watched again after being removed.
+  const [continueHidden, setContinueHidden] = useState(
+    () => storage.get("continueHidden") || {},
+  );
+  const removeFromContinue = useCallback((item) => {
+    const pk =
+      item.media_type === "movie"
+        ? `movie_${item.id}`
+        : `tv_${item.id}_s${item.season}e${item.episode}`;
+    setContinueHidden((prev) => {
+      const next = { ...prev, [pk]: Date.now() };
+      storage.set("continueHidden", next);
+      return next;
+    });
+  }, []);
+
   // Filter by progress/watched
   const inProgress = useMemo(
     () =>
       historyWithKeys.filter((h) => {
         if (watched[h._pk]) return false;
+        const hiddenAt = continueHidden[h._pk];
+        if (hiddenAt && !(h.watchedAt > hiddenAt)) return false;
         const pct = progress[h._pk];
         return pct != null && pct > 2 && pct < 98;
       }),
-    [historyWithKeys, progress, watched],
+    [historyWithKeys, progress, watched, continueHidden],
   );
 
   // Memoized, avoids re-mapping on every download-progress event
@@ -1008,7 +1097,14 @@ export default function App() {
           onShowShortcuts={() => setShowShortcuts(true)}
         />
 
-        <div className="main">
+        <div
+          className="main"
+          ref={mainRef}
+          onScroll={(e) => {
+            const top = e.currentTarget.scrollTop;
+            setShowScrollTop((prev) => (top > 700 ? true : top < 500 ? false : prev));
+          }}
+        >
           {/* ── API key status banner ── */}
           {/* Suspense boundary: lazy page chunks are fetched on first visit */}
           {apiKeyStatus === "invalid_token" && (
@@ -1044,14 +1140,22 @@ export default function App() {
                 style={{
                   color: "var(--text2)",
                   padding: 48,
-                  textAlign: "center",
-                  fontSize: 15,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  fontSize: 14,
                 }}
               >
-                Laden…
+                <div
+                  className="spinner"
+                  style={{ width: 16, height: 16, borderWidth: 2 }}
+                />
+                <span>Loading…</span>
               </div>
             }
           >
+            <RestorePageScroll mainRef={mainRef} scrollPosition={scrollPosition} page={page} selected={selected} />
             {page === "home" && (
               <HomePage
                 trending={trending}
@@ -1067,10 +1171,32 @@ export default function App() {
                 onMarkUnwatched={markUnwatched}
                 history={history}
                 apiKey={apiKey}
+                savedList={savedList}
+                isSaved={isSaved}
+                onToggleSave={toggleSave}
+                onRemoveContinue={removeFromContinue}
+                onOpenSettings={() => navigate("settings", { section: "updates" })}
+              />
+            )}
+            {(page === "movies" || page === "series") && (
+              <BrowsePage
+                key={page}
+                snapshot={browseSnapshot.current}
+                type={page === "series" ? "tv" : "movie"}
+                apiKey={apiKey}
+                offline={offline}
+                onSelect={handleSelectResult}
+                watched={watched}
+                onMarkWatched={markWatched}
+                onMarkUnwatched={markUnwatched}
+                isSaved={isSaved}
+                onToggleSave={toggleSave}
+                onOpenSettings={() => navigate("settings", { section: "updates" })}
               />
             )}
             {page === "movie" && selected && (
               <MoviePage
+                key={selected.id}
                 item={selected}
                 apiKey={apiKey}
                 playerSettings={playerSettings}
@@ -1094,6 +1220,7 @@ export default function App() {
             )}
             {page === "tv" && selected && (
               <TVPage
+                key={`${selected.id}:${selected.season ?? ""}:${selected.episode ?? ""}`}
                 item={selected}
                 apiKey={apiKey}
                 playerSettings={playerSettings}
@@ -1110,6 +1237,7 @@ export default function App() {
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
+                onSelect={handleSelectResult}
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
                 onEpisodeChange={setWatchingEpisode}
@@ -1117,6 +1245,7 @@ export default function App() {
             )}
             {page === "history" && (
               <LibraryPage
+                apiKey={offline ? null : apiKey}
                 history={history}
                 inProgress={inProgress}
                 saved={savedList}
@@ -1126,6 +1255,10 @@ export default function App() {
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
                 onRemoveHistory={removeHistory}
+                onRemoveContinue={removeFromContinue}
+                onBrowse={() => navigate("movies")}
+                isSaved={isSaved}
+                onToggleSave={toggleSave}
               />
             )}
             {page === "settings" && (
@@ -1163,12 +1296,30 @@ export default function App() {
           </Suspense>
         </div>
 
+        {showScrollTop && (
+          <button
+            type="button"
+            className="scroll-top-btn"
+            onClick={() =>
+              mainRef.current?.scrollTo({ top: 0, behavior: "auto" })
+            }
+            aria-label="Scroll to top"
+            title="Scroll to top"
+          >
+            <ArrowUpIcon size={16} />
+          </button>
+        )}
+
         {showSearch && (
           <SearchModal
             apiKey={apiKey}
             onSelect={handleSelectResult}
             onClose={() => setShowSearch(false)}
             offline={offline}
+            onOpenSettings={() => {
+              setShowSearch(false);
+              navigate("settings", { section: "updates" });
+            }}
           />
         )}
         {updateBanner && (
@@ -1179,7 +1330,7 @@ export default function App() {
               left: 0,
               right: 0,
               zIndex: 9999,
-              background: "rgba(229,9,20,0.92)",
+              background: "rgba(229,35,43,0.92)",
               backdropFilter: "blur(8px)",
               display: "flex",
               alignItems: "center",
@@ -1192,12 +1343,12 @@ export default function App() {
               color: "#fff",
             }}
           >
-            <span>🎉 Streambert v{updateBanner.latest} is available!</span>
+            <span>Update available: v{updateBanner.latest}</span>
             <button
               onClick={() => setShowUpdateModal(true)}
               style={{
                 color: "#fff",
-                fontWeight: 700,
+                fontWeight: 600,
                 background: "rgba(255,255,255,0.18)",
                 border: "1px solid rgba(255,255,255,0.4)",
                 borderRadius: 6,
@@ -1206,7 +1357,7 @@ export default function App() {
                 cursor: "pointer",
               }}
             >
-              Install Update
+              Install update
             </button>
             <button
               onClick={() => setUpdateBanner(null)}
@@ -1215,13 +1366,12 @@ export default function App() {
                 border: "none",
                 color: "rgba(255,255,255,0.7)",
                 cursor: "pointer",
-                fontSize: 18,
-                lineHeight: 1,
-                padding: "0 4px",
+                display: "inline-flex",
+                padding: 4,
               }}
               aria-label="Dismiss"
             >
-              ×
+              <CloseIcon size={16} />
             </button>
           </div>
         )}
@@ -1232,7 +1382,7 @@ export default function App() {
             onClose={() => setShowUpdateModal(false)}
           />
         )}
-        {toast && <div className="toast">{toast}</div>}
+        {toast && <div className="toast" role="status">{toast}</div>}
 
         {/* ── Episode check status pill / result card ── */}
         {episodeCheckStatus && (
@@ -1314,9 +1464,7 @@ export default function App() {
                       gap: 7,
                     }}
                   >
-                    <span style={{ color: "var(--red)", fontSize: 15 }}>
-                      🎬
-                    </span>
+                    <PlayIcon size={15} />
                     New episode
                     {episodeCheckStatus.entries.length > 1 ? "s" : ""} available
                   </div>
@@ -1330,13 +1478,12 @@ export default function App() {
                       border: "none",
                       color: "var(--text3)",
                       cursor: "pointer",
-                      fontSize: 18,
-                      lineHeight: 1,
-                      padding: "0 2px",
+                      display: "inline-flex",
+                      padding: 2,
                     }}
                     aria-label="Dismiss"
                   >
-                    ×
+                    <CloseIcon size={15} />
                   </button>
                 </div>
                 <ul

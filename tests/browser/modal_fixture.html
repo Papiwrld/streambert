@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><title>Lumen dialog fixture</title></head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.cancelledUpdates = 0;
+      window.electron = {
+        secureGet: async () => "fixture-key",
+        checkDownloader: async () => ({ exists: true, token: "fixture-token" }),
+        searchSubtitles: async () => ({
+          ok: true,
+          results: [{
+            file_id: "fixture-sub",
+            language: "en",
+            release: "Fixture subtitles",
+            direct_url: "https://example.invalid/subtitle.srt",
+          }],
+        }),
+        runDownload: () => new Promise((_resolve, reject) => {
+          window.failDownload = () => reject(new Error("Downloader unavailable"));
+        }),
+        detectUpdateFormat: async () => "exe",
+        onUpdateProgress: (callback) => { window.updateProgress = callback; },
+        offUpdateProgress: () => { window.updateProgress = null; },
+        downloadAndInstallUpdate: () => new Promise((resolve) => {
+          window.finishUpdate = () => resolve({ ok: true });
+        }),
+        cancelUpdate: async () => { window.cancelledUpdates++; },
+      };
+    </script>
+    <script type="module">
+      import React, { useState } from "react";
+      import { createRoot } from "react-dom/client";
+      import CloseConfirmModal from "../../src/components/CloseConfirmModal.jsx";
+      import DownloadModal from "../../src/components/DownloadModal.jsx";
+      import UpdateModal from "../../src/components/UpdateModal.jsx";
+      import * as gamepad from "../../src/utils/gamepadSpatialNav.js";
+      import "../../src/styles/global.css";
+
+      window.gamepad = gamepad;
+      const e = React.createElement;
+      const update = {
+        current: "1.0.0",
+        latest: "2.0.0",
+        url: "https://example.invalid/updates",
+        assets: { exe: "https://example.invalid/fixture.exe" },
+      };
+
+      function Fixture() {
+        const [active, setActive] = useState(null);
+        const close = () => setActive(null);
+        return e(React.Fragment, null,
+          e("button", { onClick: () => setActive("download") }, "Open download"),
+          e("button", { onClick: () => setActive("update") }, "Open update"),
+          e("button", { onClick: () => setActive("confirm") }, "Open confirmation"),
+          active === "download" && e(DownloadModal, {
+            onClose: close,
+            m3u8Url: "https://example.invalid/stream.m3u8",
+            mediaName: "Fixture film",
+            mediaType: "movie",
+            tmdbId: 1,
+            downloaderFolder: "/test/downloader",
+          }),
+          active === "update" && e(UpdateModal, { updateInfo: update, onClose: close }),
+          active === "confirm" && e(CloseConfirmModal, {
+            count: 2, onCancel: close, onConfirm: close,
+          }),
+        );
+      }
+
+      createRoot(document.getElementById("root")).render(e(React.StrictMode, null, e(Fixture)));
+    </script>
+  </body>
+</html>

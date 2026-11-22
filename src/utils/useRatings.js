@@ -5,7 +5,7 @@ import {
   getAgeLimitSetting,
   getRatingCountry,
 } from "./ageRating";
-import { storage, getApiKey } from "./storage";
+import { storage } from "./storage";
 
 const CACHE_KEY = "ratingsCache";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 7; // 7 days
@@ -41,13 +41,12 @@ function evictStale(cache) {
 /**
  * Hook that fetches + caches age ratings for an array of items.
  */
-export function useRatings(items) {
+export function useRatings(items, apiKey) {
   const [ratingsMap, setRatingsMap] = useState({});
   // Read stable settings once — these only change when user visits Settings,
   // which unmounts/remounts affected pages anyway, so useState(init) is correct.
   const [ageLimitSetting] = useState(() => getAgeLimitSetting(storage));
   const [ratingCountry] = useState(() => getRatingCountry(storage));
-  const [apiKey] = useState(() => getApiKey());
 
   const itemsKey = useMemo(() => {
     if (!items?.length) return "";
@@ -58,7 +57,7 @@ export function useRatings(items) {
   }, [items]);
 
   useEffect(() => {
-    if (!itemsKey || !apiKey) return;
+    if (!itemsKey) return;
 
     // Read cache once for the whole effect run
     const cache = evictStale(readCache());
@@ -86,7 +85,7 @@ export function useRatings(items) {
       setRatingsMap((prev) => ({ ...prev, ...initial }));
     }
 
-    if (!missing.length) return;
+    if (!apiKey || !missing.length) return;
 
     let cancelled = false;
     (async () => {

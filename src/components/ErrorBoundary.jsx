@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { WarningIcon } from "./Icons";
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -11,7 +12,6 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Could send to a logging service here
     console.error("[ErrorBoundary]", error, info);
   }
 
@@ -21,110 +21,42 @@ export default class ErrorBoundary extends Component {
     const { error } = this.state;
 
     return (
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "#0a0a0a",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          gap: 20,
-          padding: 40,
-          fontFamily: "var(--font-sans, sans-serif)",
-        }}
-      >
-        {/* Icon */}
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: "50%",
-            background: "rgba(229,9,20,0.12)",
-            border: "1px solid rgba(229,9,20,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 28,
-          }}
-        >
-          ⚠
-        </div>
-
-        <div
-          style={{
-            fontFamily: "var(--font-display, monospace)",
-            fontSize: 28,
-            letterSpacing: 1,
-            color: "#fff",
-          }}
-        >
-          SOMETHING WENT WRONG
-        </div>
-
-        <div
-          style={{
-            fontSize: 14,
-            color: "rgba(255,255,255,0.5)",
-            textAlign: "center",
-            maxWidth: 500,
-          }}
-        >
-          An unexpected error occurred in this section. Your data is safe, you
-          can try reloading the app.
-        </div>
-
-        {error && (
-          <pre
-            style={{
-              fontSize: 12,
-              color: "rgba(229,9,20,0.8)",
-              background: "rgba(229,9,20,0.06)",
-              border: "1px solid rgba(229,9,20,0.2)",
-              borderRadius: 8,
-              padding: "12px 16px",
-              maxWidth: 600,
-              overflowX: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
+      <div className="error-screen">
+        <div className="error-screen__card">
+          <div
+            className="lumen-dialog__icon-badge lumen-dialog__icon-badge--danger"
+            style={{ marginBottom: 0 }}
           >
-            {error.message}
-          </pre>
-        )}
+            <WarningIcon size={22} />
+          </div>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            style={{
-              background: "var(--surface, #1a1a1a)",
-              border: "1px solid var(--border, rgba(255,255,255,0.1))",
-              borderRadius: 8,
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: 600,
-              padding: "10px 22px",
-            }}
-          >
-            Try Again
-          </button>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              background: "rgba(229,9,20,0.85)",
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: 600,
-              padding: "10px 22px",
-            }}
-          >
-            Reload App
-          </button>
+          <h1 className="error-screen__title">Something went wrong</h1>
+
+          <p className="error-screen__desc">
+            An unexpected error occurred in this section. Your data is safe —
+            try recovering or reloading the app.
+          </p>
+
+          {error?.message && (
+            <pre className="error-screen__trace">{error.message}</pre>
+          )}
+
+          <div className="error-screen__actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn--sm"
+              onClick={() => this.setState({ hasError: false, error: null })}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn--sm"
+              onClick={() => window.location.reload()}
+            >
+              Reload app
+            </button>
+          </div>
         </div>
       </div>
     );

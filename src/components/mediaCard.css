@@ -1,0 +1,129 @@
+.card.media-card {
+    min-width: 0;
+    cursor: default;
+}
+
+.media-card__open {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: none;
+    cursor: pointer;
+}
+
+.media-card__open:focus-visible + .card-poster {
+    outline: 2px solid var(--red);
+    outline-offset: 3px;
+}
+
+.media-card__open:focus-visible,
+.media-card__open.gamepad-focused {
+    outline: none !important;
+}
+
+.media-card__open.gamepad-focused + .card-poster {
+    outline: 2px solid var(--red);
+    outline-offset: 3px;
+}
+
+.media-card__options {
+    position: absolute;
+    z-index: 6;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    color: white;
+    background: rgba(15, 15, 17, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 50%;
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.media-card:hover .media-card__options,
+.media-card:focus-within .media-card__options,
+.media-card__options[aria-expanded="true"] {
+    opacity: 1;
+}
+
+.media-card__options:hover,
+.media-card__options:focus-visible {
+    background: #343438;
+}
+
+.media-card--options .card-watched-badge {
+    top: auto;
+    bottom: 8px;
+}
+
+.media-card:has(.card-progress) .card-flag {
+    bottom: 18px;
+}
+
+.media-card__resume {
+    position: absolute;
+    z-index: 3;
+    right: 8px;
+    bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(15, 15, 17, 0.86);
+    color: white;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+}
+
+.context-menu.media-card-menu {
+    inset: auto;
+    margin: 0;
+    min-width: 0;
+    width: min(210px, calc(100vw - 16px));
+    max-height: calc(100dvh - 48px);
+    overflow: auto;
+    color: var(--text);
+    transform-origin: top left;
+}
+
+.media-card-menu .context-menu-item:focus-visible {
+    outline: 1px solid var(--red);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.hover-preview {
+    max-height: calc(100dvh - 48px);
+    overflow: auto;
+}
+
+@media (hover: none) {
+    .media-card__options {
+        opacity: 1;
+        width: 40px;
+        height: 40px;
+    }
+
+    .media-card:hover .card-poster {
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .media-card:hover .card-poster {
+        transform: none;
+    }
+
+    .media-card-menu {
+        animation: none;
+    }
+}

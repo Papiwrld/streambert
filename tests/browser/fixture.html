@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><title>Lumen regression fixture</title></head>
+  <body>
+    <div id="root" class="main"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import SettingsPage from "../../src/pages/SettingsPage.jsx";
+      import TVPage from "../../src/pages/TVPage.jsx";
+      import "../../src/styles/global.css";
+
+      const root = createRoot(document.getElementById("root"));
+      const noop = () => {};
+      window.playHistory = [];
+      window.mountSettings = () => root.render(React.createElement(SettingsPage, {
+        apiKey: "fixture-key", onChangeApiKey: noop,
+      }));
+      window.mountTV = (item, watched = {}) => root.render(React.createElement(TVPage, {
+        item, watched, apiKey: "fixture-key", progress: {}, downloads: [],
+        playerSettings: {}, onHistory: (entry) => window.playHistory.push(entry),
+        saveProgress: noop, onSave: noop, onBack: noop, onSettings: noop,
+        onMarkWatched: noop, onMarkUnwatched: noop, onSelect: noop,
+        onDownloadStarted: noop, onGoToDownloads: noop,
+      }));
+    </script>
+  </body>
+</html>

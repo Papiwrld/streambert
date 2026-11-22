@@ -37,25 +37,12 @@ import {
   sourceUsesCleanUa,
   getNextNonAsyncSource,
 } from "../utils/api";
-import {
-  BookmarkIcon,
-  BookmarkFillIcon,
-  BackIcon,
-  StarIcon,
-  PlayIcon,
-  TVIcon,
-  DownloadIcon,
-  WatchedIcon,
-  TrailerIcon,
-  RatingShieldIcon,
-  RatingLockIcon,
-  SourceIcon,
-  ShieldBlockIcon,
-  PopOutIcon,
-  CastIcon,
-} from "../components/Icons";
+import { BookmarkIcon, BookmarkFillIcon, BackIcon, StarIcon, PlayIcon, TVIcon, DownloadIcon, WatchedIcon, TrailerIcon, RatingShieldIcon, RatingLockIcon, SourceIcon, ShieldBlockIcon, PopOutIcon, CastIcon, CheckIcon, ResetIcon, WarningIcon, ChevronDownIcon } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
+import SimilarRow from "../components/SimilarRow";
+import WatchView from "../components/WatchView";
+import ThumbsButtons from "../components/ThumbsButtons";
 import BlockedStatsModal from "../components/BlockedStatsModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
 import {
@@ -75,6 +62,8 @@ import {
 } from "../utils/ageRating";
 import CastModal from "../components/CastModal";
 import { useCredits } from "../utils/useCredits";
+import TitleArt from "../components/TitleArt";
+import DetailAside from "../components/DetailAside";
 import {
   GAMEPAD_PLAYER_SCRIPT,
   GAMEPAD_EXIT_CHECK_JS,
@@ -145,6 +134,8 @@ function ContextMenu({
   onMarkWatched,
   onMarkUnwatched,
   onMarkNotStarted,
+  onSetProgress,
+  currentProgress = 0,
   onClose,
 }) {
   const onCloseRef = useRef(onClose);
@@ -173,7 +164,7 @@ function ContextMenu({
             onCloseRef.current();
           }}
         >
-          ↩ {unwatchedLabel}
+          {unwatchedLabel}
         </button>
       ) : (
         <button
@@ -184,7 +175,7 @@ function ContextMenu({
             onCloseRef.current();
           }}
         >
-          ✓ {watchedLabel}
+          {watchedLabel}
         </button>
       )}
       {onMarkNotStarted && !isWatched && hasProgress && (
@@ -196,8 +187,27 @@ function ContextMenu({
             onCloseRef.current();
           }}
         >
-          ⊘ Mark as Not Started
+          Mark as not started
         </button>
+      )}
+      {onSetProgress && !isWatched && (
+        <div className="context-menu-progress" role="group" aria-label="Set progress">
+          <span className="context-menu-progress__label">Set progress</span>
+          {[25, 50, 75].map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`context-menu-progress__btn${Math.round(currentProgress) === p ? " is-on" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetProgress(p);
+                onCloseRef.current();
+              }}
+            >
+              {p}%
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -310,7 +320,7 @@ const INJECT_SKIP_CONTROLS = `
     } else {
       btn.style.right = '24px';
     }
-    btn.onmouseenter = function() { btn.style.background = 'rgba(229,9,20,0.85)'; btn.style.borderColor = '#e5091466'; };
+    btn.onmouseenter = function() { btn.style.background = 'rgba(229,35,43,0.85)'; btn.style.borderColor = '#e5232b66'; };
     btn.onmouseleave = function() { btn.style.background = 'rgba(0,0,0,0.72)'; btn.style.borderColor = 'rgba(255,255,255,0.18)'; };
     btn.onclick = function(e) {
       e.stopPropagation();
@@ -423,15 +433,32 @@ export default function TVPage({
   watched,
   onMarkWatched,
   onMarkUnwatched,
+  onSelect,
   downloads,
   onGoToDownloads,
   onEpisodeChange,
 }) {
   const [details, setDetails] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
+  const [loadedSeasonKey, setLoadedSeasonKey] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
-  const [selectedSeason, setSelectedSeason] = useState(() =>
-    item.season != null ? Number(item.season) : 1,
+  // An explicit season (e.g. from Continue watching) wins; otherwise reopen
+  // the season the user last picked for this show.
+  const [selectedSeason, setSelectedSeason] = useState(() => {
+    if (item.season != null) return Number(item.season);
+    const remembered = (storage.get(SEASON_PICKS_KEY) || {})[item.id];
+    return remembered != null ? Number(remembered) : 1;
+  });
+  const pickSeason = useCallback(
+    (n) => {
+      setSelectedSeason(n);
+      const picks = storage.get(SEASON_PICKS_KEY) || {};
+      delete picks[item.id];
+      // Most recent last; keep the map small
+      const entries = [...Object.entries(picks), [item.id, n]].slice(-200);
+      storage.set(SEASON_PICKS_KEY, Object.fromEntries(entries));
+    },
+    [item.id],
   );
   const [selectedEp, setSelectedEp] = useState(null);
   const [playing, setPlaying] = useState(false);
@@ -500,6 +527,7 @@ export default function TVPage({
   );
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
+
   const webviewRef = useRef(null);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
@@ -531,9 +559,11 @@ export default function TVPage({
   } = useBlockedStats(blockedResetKey);
 
   // Age rating
-  const [rating, setRating] = useState({ cert: null, minAge: null });
+  const [ratingResult, setRating] = useState(null);
+  const rating = ratingResult ?? { cert: null, minAge: null };
   const ageLimitSetting = useMemo(() => getAgeLimitSetting(storage), []);
   const ratingCountry = useMemo(() => getRatingCountry(storage), []);
+  const checkingRating = ageLimitSetting != null && !ratingResult && !!apiKey;
   const restricted = isRestricted(rating.minAge, ageLimitSetting);
   const [seasonMenu, setSeasonMenu] = useState(null); // { x, y, seasonNum }
 
@@ -572,8 +602,13 @@ export default function TVPage({
       .then((d) => {
         if (!mounted) return;
         setDetails(d);
-        // Only fall back when no specific season was requested
-        if (item.season == null) {
+        // Only fall back when no specific season was requested and the
+        // user's remembered pick doesn't exist for this show
+        const remembered = (storage.get(SEASON_PICKS_KEY) || {})[item.id];
+        const rememberedValid =
+          remembered != null &&
+          (d.seasons || []).some((s) => s.season_number === Number(remembered));
+        if (item.season == null && !rememberedValid) {
           const validSeasons = (d.seasons || []).filter(
             (s) => s.season_number > 0,
           );
@@ -671,6 +706,7 @@ export default function TVPage({
     setSelectedEp(null);
     setPlaying(false);
     setSeasonData(null); // clear stale episodes immediately
+    setLoadedSeasonKey(null);
     // AniList virtual seasons on a single-season show: always fetch TMDB S1.
     const tmdbSeasonToFetch =
       isAnime && anilistSeasons?.length > 0 && tmdbSeasons.length <= 1
@@ -679,7 +715,10 @@ export default function TVPage({
     let mounted = true;
     tmdbFetch(`/tv/${item.id}/season/${tmdbSeasonToFetch}`, apiKey)
       .then((d) => {
-        if (mounted) setSeasonData(d);
+        if (mounted) {
+          setSeasonData(d);
+          setLoadedSeasonKey(`${item.id}:${selectedSeason}`);
+        }
       })
       .catch(() => {
         if (mounted) {
@@ -1630,8 +1669,20 @@ export default function TVPage({
     // playerSource: the webview is remounted when the UA mode changes
   }, [playing, gamepadEnabled, playerSource]);
 
+  const pendingPlayRef = useRef(null);
+  const [switchingSeason, setSwitchingSeason] = useState(false);
   const playEpisode = useCallback(
     (ep) => {
+      if (checkingRating || restricted || isUnreleased(ep.air_date)) return;
+      if (ep._season != null && ep._season !== selectedSeason) {
+        pendingPlayRef.current = {
+          season: ep._season,
+          episode: ep.episode_number,
+        };
+        setSwitchingSeason(true);
+        pickSeason(ep._season);
+        return;
+      }
       setM3u8Url(null);
       setInterceptedSubs([]);
       resolvedPlayerUrlRef.current = null;
@@ -1650,8 +1701,44 @@ export default function TVPage({
       });
       // d and selectedSeason are stable within a season view; onHistory is useCallback in App
     },
-    [d, selectedSeason, onHistory],
+    [checkingRating, restricted, d, selectedSeason, onHistory, pickSeason],
   );
+
+  // At the end of a season, look up the next season's first episode so
+  // autoplay carries on into it (like Netflix does).
+  const isLastOfSeason = useMemo(() => {
+    if (!selectedEp || !currentSeasonEpisodes?.length) return false;
+    return (
+      currentSeasonEpisodes[currentSeasonEpisodes.length - 1].episode_number ===
+      selectedEp.episode_number
+    );
+  }, [selectedEp, currentSeasonEpisodes]);
+  const followingSeason = useMemo(() => {
+    if (episodeGroupData || !selectedSeason) return null;
+    return (
+      (details?.seasons || [])
+        .filter((x) => x.season_number > selectedSeason && x.episode_count > 0)
+        .sort((a, b) => a.season_number - b.season_number)[0] || null
+    );
+  }, [details?.seasons, selectedSeason, episodeGroupData]);
+  const [nextSeasonFirst, setNextSeasonFirst] = useState(null);
+  useEffect(() => {
+    setNextSeasonFirst(null);
+    if (!playing || !isLastOfSeason || !followingSeason || !apiKey) return;
+    let alive = true;
+    const n = followingSeason.season_number;
+    tmdbFetch(`/tv/${item.id}/season/${n}`, apiKey)
+      .then((data) => {
+        const first = (data?.episodes || [])
+          .filter((e) => e.episode_number > 0)
+          .sort((a, b) => a.episode_number - b.episode_number)[0];
+        if (alive && first) setNextSeasonFirst({ ...first, _season: n });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [playing, isLastOfSeason, followingSeason, apiKey, item.id]);
 
   const nextEp = useMemo(() => {
     if (!selectedEp || !currentSeasonEpisodes) return null;
@@ -1663,8 +1750,88 @@ export default function TVPage({
       // Never autoplay an episode that has not aired yet
       return isUnreleased(candidate.air_date) ? null : candidate;
     }
+    if (nextSeasonFirst && !isUnreleased(nextSeasonFirst.air_date)) {
+      return nextSeasonFirst;
+    }
     return null;
-  }, [selectedEp, currentSeasonEpisodes]);
+  }, [selectedEp, currentSeasonEpisodes, nextSeasonFirst]);
+
+  // Keep an explicit resume target while viewing its season.
+  const requestedEp = useMemo(() => {
+    if (item.episode == null || Number(item.season ?? selectedSeason) !== selectedSeason) return null;
+    return currentSeasonEpisodes.find(
+      (episode) => episode.episode_number === Number(item.episode) && !isUnreleased(episode.air_date),
+    ) ?? null;
+  }, [item.episode, item.season, selectedSeason, currentSeasonEpisodes]);
+
+  // Otherwise play the first released, unwatched episode of this season.
+  const primaryEp = useMemo(() => {
+    const eps = (currentSeasonEpisodes || []).filter(
+      (e) => !isUnreleased(e.air_date),
+    );
+    if (eps.length === 0) return null;
+    return (
+      requestedEp || eps.find(
+        (e) =>
+          !watched?.[`tv_${item.id}_s${selectedSeason}e${e.episode_number}`],
+      ) || eps[0]
+    );
+  }, [currentSeasonEpisodes, requestedEp, watched, item.id, selectedSeason]);
+
+  const primaryProgressKey = `tv_${item.id}_s${selectedSeason}e${primaryEp?.episode_number}`;
+  const canResumePrimary = progress?.[primaryProgressKey] > 0 && !watched?.[primaryProgressKey];
+
+  useEffect(() => {
+    const pending = pendingPlayRef.current;
+    if (!pending || pending.season !== selectedSeason) return;
+    if (loadingSeason || loadedSeasonKey !== `${item.id}:${selectedSeason}`) return;
+    pendingPlayRef.current = null;
+    const ep = currentSeasonEpisodes.find(
+      (e) => e.episode_number === pending.episode,
+    );
+    setSwitchingSeason(false);
+    if (ep) playEpisode(ep);
+  }, [selectedSeason, loadingSeason, loadedSeasonKey, item.id, currentSeasonEpisodes, playEpisode]);
+
+  const autoplayedIdRef = useRef(null);
+  useEffect(() => {
+    // Episode data can arrive before details choose the first incomplete season.
+    // Match it to the current selection before consuming this autoplay request.
+    const seasonReady =
+      episodeGroupData || loadedSeasonKey === `${item.id}:${selectedSeason}`;
+    const target = item.episode != null ? requestedEp : primaryEp;
+    if (
+      item?.autoplay &&
+      !loading &&
+      !loadingSeason &&
+      !checkingRating &&
+      details?.id === item.id &&
+      seasonReady &&
+      target &&
+      !playing &&
+      !restricted &&
+      autoplayedIdRef.current !== item.id
+    ) {
+      autoplayedIdRef.current = item.id;
+      playEpisode(target);
+    }
+  }, [
+    item?.autoplay,
+    item?.id,
+    item?.episode,
+    primaryEp,
+    requestedEp,
+    playing,
+    restricted,
+    playEpisode,
+    loading,
+    loadingSeason,
+    checkingRating,
+    details?.id,
+    episodeGroupData,
+    loadedSeasonKey,
+    selectedSeason,
+  ]);
 
   const {
     autoplayCountdown,
@@ -1788,7 +1955,14 @@ export default function TVPage({
               </div>
               <div className="detail-info">
                 <div className="detail-type">Series</div>
-                <div className="detail-title">{title}</div>
+                <TitleArt
+                  type="tv"
+                  id={item.id}
+                  apiKey={apiKey}
+                  title={title}
+                  className="detail-title"
+                  size="w780"
+                />
                 <div className="genres">
                   {displayGenres.map((g) => (
                     <span key={g.id} className="genre-tag">
@@ -1836,75 +2010,82 @@ export default function TVPage({
                 )}
                 <p className="detail-overview">{displayOverview}</p>
                 <div className="detail-actions">
-                  {trailerKey &&
-                    (restricted ? (
+                  {restricted ? (
+                    <button
+                      className="btn btn-primary btn-restricted"
+                      disabled
+                      title="Inappropriate for your age rating setting"
+                    >
+                      <RatingLockIcon size={18} /> Restricted
+                    </button>
+                  ) : (
+                    primaryEp && (
                       <button
-                        className="btn btn-secondary btn-restricted"
-                        disabled
-                        title="Inappropriate for your age rating setting"
+                        className="btn btn-primary"
+                        disabled={checkingRating}
+                        onClick={() => playEpisode(primaryEp)}
                       >
-                        🔒 Trailer
+                        <PlayIcon />
+                        {checkingRating ? "Checking rating…" : `${canResumePrimary ? "Resume" : "Play"} S${selectedSeason} E${primaryEp.episode_number}`}
                       </button>
-                    ) : (
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setShowTrailer(true)}
-                      >
-                        <TrailerIcon /> Trailer
-                      </button>
-                    ))}
+                    )
+                  )}
+                  {trailerKey && (
+                    <button
+                      className="icon-action"
+                      onClick={() => setShowTrailer(true)}
+                      disabled={restricted}
+                      aria-label="Trailer"
+                      title="Trailer"
+                    >
+                      <TrailerIcon />
+                    </button>
+                  )}
                   <button
-                    className="btn btn-secondary"
-                    onClick={() => setShowCast(true)}
+                    className={`icon-action${isSaved ? " is-on" : ""}`}
+                    onClick={onSave}
+                    aria-label={isSaved ? "Remove from saved" : "Save"}
+                    aria-pressed={isSaved}
+                    title={isSaved ? "Saved" : "Save"}
                   >
-                    <CastIcon /> Cast
-                  </button>
-                  <button className="btn btn-secondary" onClick={onSave}>
                     {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}
-                    {isSaved ? "Saved" : "Save"}
                   </button>
-                  <button className="btn btn-ghost" onClick={onBack}>
-                    <BackIcon /> Back
+                  <ThumbsButtons type="tv" id={item.id} />
+                  <button
+                    className="icon-action"
+                    onClick={() => setShowCast(true)}
+                    aria-label="Cast and crew"
+                    title="Cast and crew"
+                  >
+                    <CastIcon />
                   </button>
                 </div>
               </div>
+              <DetailAside
+                type="tv"
+                cast={credits.cast}
+                createdBy={d?.created_by}
+                onShowCast={() => setShowCast(true)}
+              />
             </div>
           </div>
 
-          {playing && selectedEp && (
-            <div className="section">
-              <div
-                style={{
-                  marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <span className="tag tag-red">
-                  Season {selectedSeason} · E{selectedEp.episode_number}
-                </span>
-                <span style={{ fontSize: 14, fontWeight: 500 }}>
-                  {selectedEp.name}
-                </span>
-                {currentEpWatched ? (
-                  <button
-                    className="btn btn-ghost watched-btn"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => onMarkUnwatched?.(currentProgressKey)}
-                  >
-                    <WatchedIcon size={14} /> Watched
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => onMarkWatched?.(currentProgressKey)}
-                  >
-                    ✓ Mark Watched
-                  </button>
-                )}
-              </div>
+          {((playing && selectedEp) || switchingSeason) && !restricted && !checkingRating && (
+            <WatchView
+              title={title}
+              subtitle={
+                playing && selectedEp
+                  ? `S${selectedSeason}:E${selectedEp.episode_number} ${selectedEp.name || ""}`.trim()
+                  : `Season ${selectedSeason}`
+              }
+              onClose={() => {
+                pendingPlayRef.current = null;
+                setSwitchingSeason(false);
+                setPlaying(false);
+              }}
+            >
+              {playing && selectedEp ? (
+              <>
               <div
                 className={`player-wrap${playerFullscreen ? " player-wrap--fullscreen" : ""}`}
                 ref={playerWrapRef}
@@ -1956,7 +2137,7 @@ export default function TVPage({
                       borderRadius: "inherit",
                     }}
                   >
-                    <span style={{ fontSize: 28 }}>⚠️</span>
+                    <WarningIcon size={28} color="var(--text3)" />
                     <span style={{ fontSize: 14, color: "var(--text2)" }}>
                       Episode not found on HiAnime
                     </span>
@@ -1984,7 +2165,7 @@ export default function TVPage({
                       borderRadius: "inherit",
                     }}
                   >
-                    <span style={{ fontSize: 28 }}>⚠️</span>
+                    <WarningIcon size={28} color="var(--text3)" />
                     <span style={{ fontSize: 14, color: "var(--text2)" }}>
                       Could not resolve the {srcId.idLabel} for this title
                     </span>
@@ -2404,7 +2585,7 @@ export default function TVPage({
                         color:
                           currentEpDownload.status === "downloading"
                             ? "var(--red)"
-                            : "#4caf50",
+                            : "#3fb37f",
                       }}
                     >
                       {currentEpDownload.status === "downloading" ? "↓" : "✓"}
@@ -2420,7 +2601,7 @@ export default function TVPage({
                       className="player-no-progress-hint"
                       title="No automatic progress tracking for this source"
                     >
-                      ⚠ no tracking
+                      No progress tracking
                     </span>
                   )}
                 </button>
@@ -2453,8 +2634,8 @@ export default function TVPage({
                       animation: "slideDown 0.2s ease",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(229,9,20,0.85)";
-                      e.currentTarget.style.borderColor = "rgba(229,9,20,0.5)";
+                      e.currentTarget.style.background = "rgba(229,35,43,0.85)";
+                      e.currentTarget.style.borderColor = "rgba(229,35,43,0.5)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "rgba(0,0,0,0.72)";
@@ -2538,68 +2719,35 @@ export default function TVPage({
                     </div>
                   ) : null;
                 })()}
-              {currentProgressKey && (
-                <div className="progress-mark-row">
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text3)",
-                      marginRight: 4,
-                    }}
-                  >
-                    Mark progress:
-                  </span>
-                  {[25, 50, 75, 100].map((p) => (
-                    <button
-                      key={p}
-                      className="btn btn-ghost"
-                      style={{ padding: "5px 14px", fontSize: 12 }}
-                      onClick={() => saveProgress(currentProgressKey, p)}
-                    >
-                      {p}%
-                    </button>
-                  ))}
+              </>
+              ) : (
+                <div className="watch-view__switching" role="status">
+                  <div className="spinner" />
+                  <span>Loading next season…</span>
                 </div>
               )}
-            </div>
+            </WatchView>
           )}
 
           <div className="section">
-            <div className="section-title">Episodes</div>
-            {seasons.length > 0 && (
-              <div className="season-selector">
-                {seasons.map((s) => {
-                  const sw = seasonWatchedMap[s.season_number] ?? "none";
-                  return (
-                    <button
-                      key={s.season_number}
-                      className={`season-btn ${selectedSeason === s.season_number ? "active" : ""} ${sw === "all" ? "season-watched" : sw.startsWith("some") ? "season-partial" : ""}`}
-                      onClick={() => setSelectedSeason(s.season_number)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setSeasonMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          seasonNum: s.season_number,
-                        });
-                      }}
-                      title="Right-click to mark season as watched/unwatched"
-                    >
-                      {sw === "all" && (
-                        <span className="season-watched-icon">✓</span>
-                      )}
-                      {sw === "some25" && <PartialCircleIcon pct={25} />}
-                      {sw === "some50" && <PartialCircleIcon pct={50} />}
-                      {sw === "some75" && <PartialCircleIcon pct={75} />}
-                      {s.season_number === 0
-                        ? "Specials"
-                        : `Season ${s.season_number}`}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div className="episodes-header">
+              <h2 className="section-title">Episodes</h2>
+              {seasons.length > 1 ? (
+                <SeasonSelect
+                  seasons={seasons}
+                  value={selectedSeason}
+                  watchedMap={seasonWatchedMap}
+                  onChange={pickSeason}
+                  onSeasonMenu={setSeasonMenu}
+                />
+              ) : seasons.length === 1 ? (
+                <span className="episodes-header__season">
+                  {seasons[0].season_number === 0
+                    ? "Specials"
+                    : `Season ${seasons[0].season_number}`}
+                </span>
+              ) : null}
+            </div>
             {selectedSeason === 0 && !loadingSeason && (
               <div
                 style={{
@@ -2615,7 +2763,7 @@ export default function TVPage({
                   gap: 8,
                 }}
               >
-                <span>⚠️</span>
+                <WarningIcon size={16} color="var(--text3)" />
                 <span>
                   Specials support varies by provider. If the wrong episode
                   plays, try switching to a different source. But it can't be
@@ -2630,7 +2778,7 @@ export default function TVPage({
             )}
             {!loadingSeason &&
               (seasonData?.episodes || episodeGroupCurrentEpisodes?.length) && (
-                <div className="episodes-grid">
+                <div className="episodes-list">
                   {currentSeasonEpisodes.map((ep) => {
                     const pk = `tv_${item.id}_s${selectedSeason}e${ep.episode_number}`;
                     return (
@@ -2646,6 +2794,11 @@ export default function TVPage({
                         downloadsByEpisodeKey={downloadsByEpisodeKey}
                         restricted={restricted}
                         onPlay={playEpisode}
+                        onToggleWatched={() =>
+                          watched?.[pk]
+                            ? onMarkUnwatched?.(pk)
+                            : onMarkWatched?.(pk)
+                        }
                         onContextMenu={setEpMenu}
                         onGoToDownloads={onGoToDownloads}
                       />
@@ -2655,6 +2808,18 @@ export default function TVPage({
               )}
           </div>
         </>
+      )}
+
+      {onSelect && (
+        <SimilarRow
+          type="tv"
+          id={item.id}
+          apiKey={apiKey}
+          onSelect={onSelect}
+          watched={watched}
+          onMarkWatched={onMarkWatched}
+          onMarkUnwatched={onMarkUnwatched}
+        />
       )}
 
       {showTrailer && trailerKey && (
@@ -2681,8 +2846,10 @@ export default function TVPage({
           y={epMenu.y}
           isWatched={!!watched?.[epMenu.pk]}
           hasProgress={(progress?.[epMenu.pk] ?? 0) > 0}
-          watchedLabel="Mark as Watched"
-          unwatchedLabel="Mark as Unwatched"
+          watchedLabel="Mark as watched"
+          unwatchedLabel="Mark as unwatched"
+          currentProgress={progress?.[epMenu.pk] ?? 0}
+          onSetProgress={(p) => saveProgress?.(epMenu.pk, p)}
           onMarkWatched={() => onMarkWatched?.(epMenu.pk)}
           onMarkUnwatched={() => onMarkUnwatched?.(epMenu.pk)}
           onMarkNotStarted={() => {
@@ -2699,8 +2866,8 @@ export default function TVPage({
           x={seasonMenu.x}
           y={seasonMenu.y}
           isWatched={isSeasonWatched(seasonMenu.seasonNum)}
-          watchedLabel="Mark Season as Watched"
-          unwatchedLabel="Mark Season as Unwatched"
+          watchedLabel="Mark season as watched"
+          unwatchedLabel="Mark season as unwatched"
           onMarkWatched={() => markSeasonWatched(seasonMenu.seasonNum)}
           onMarkUnwatched={() => markSeasonUnwatched(seasonMenu.seasonNum)}
           onClose={() => setSeasonMenu(null)}
@@ -2738,9 +2905,128 @@ export default function TVPage({
   );
 }
 
+// ── SeasonSelect ──────────────────────────────────────────────────────────
+// Netflix-style season dropdown. Right-click a season to mark it watched.
+function SeasonSelect({ seasons, value, watchedMap, onChange, onSeasonMenu }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const label = (n) => (n === 0 ? "Specials" : `Season ${n}`);
+  const focusTrigger = () =>
+    ref.current
+      ?.querySelector(".lumen-select__trigger")
+      ?.focus({ preventScroll: true });
+
+  useEffect(() => {
+    if (!open) return;
+    ref.current
+      ?.querySelector('[role="option"][aria-selected="true"]')
+      ?.focus({ preventScroll: true });
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        focusTrigger();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
+
+  const status = (n) => {
+    const w = watchedMap[n] ?? "none";
+    return w === "all" ? "Watched" : w.startsWith("some") ? "In progress" : null;
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="lumen-select season-select"
+      onKeyDown={(e) => {
+        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        if (!open) {
+          setOpen(true);
+          return;
+        }
+        const items = [...ref.current.querySelectorAll('[role="option"]')];
+        const i = items.indexOf(document.activeElement);
+        const next =
+          e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? items.length - 1
+              : (i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      }}
+    >
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Season: ${label(value)}`}
+        className={`lumen-select__trigger${open ? " lumen-select__trigger--open" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onSeasonMenu({ x: e.clientX, y: e.clientY, seasonNum: value });
+        }}
+      >
+        <span className="lumen-select__value">{label(value)}</span>
+        <span className="lumen-select__chevron">
+          <ChevronDownIcon size={14} />
+        </span>
+      </button>
+      {open && (
+        <div className="lumen-select__menu season-select__menu" role="listbox">
+          {seasons.map((s) => {
+            const active = s.season_number === value;
+            const st = status(s.season_number);
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-selected={active}
+                key={s.season_number}
+                className={`lumen-select__option${active ? " lumen-select__option--active" : ""}`}
+                onClick={() => {
+                  onChange(s.season_number);
+                  setOpen(false);
+                  focusTrigger();
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpen(false);
+                  onSeasonMenu({ x: e.clientX, y: e.clientY, seasonNum: s.season_number });
+                }}
+              >
+                <span>{label(s.season_number)}</span>
+                <span className="season-select__meta">
+                  {st ?? (s.episode_count ? `${s.episode_count} episodes` : "")}
+                  {active && <CheckIcon size={13} />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── EpisodeCard ────────────────────────────────────────────────────────────
 // Isolated memo'd component so progress-bar updates (every 5s) only re-render
 // the one currently-playing card, not all 24+ cards in the grid.
+
+const SEASON_PICKS_KEY = "seasonPicks";
 
 const EpisodeCard = memo(function EpisodeCard({
   ep,
@@ -2753,6 +3039,7 @@ const EpisodeCard = memo(function EpisodeCard({
   downloadsByEpisodeKey,
   restricted,
   onPlay,
+  onToggleWatched,
   onContextMenu,
   onGoToDownloads,
 }) {
@@ -2763,46 +3050,52 @@ const EpisodeCard = memo(function EpisodeCard({
     downloadsByEpisodeKey.get(`s${selectedSeason}e${ep.episode_number}`) ??
     null;
 
+  const playable = !restricted && !epUnreleased;
+  const play = () => (playable ? onPlay(ep) : null);
+
   return (
     <div
-      className={`episode-card ${isPlaying ? "playing" : ""} ${epWatched ? "ep-watched" : ""} ${restricted ? "episode-card--restricted" : ""} ${epUnreleased ? "episode-card--unreleased" : ""}`}
-      onClick={() => (restricted || epUnreleased ? null : onPlay(ep))}
+      className={`episode-card episode-row ${isPlaying ? "playing" : ""} ${epWatched ? "ep-watched" : ""} ${restricted ? "episode-card--restricted" : ""} ${epUnreleased ? "episode-card--unreleased" : ""}`}
+      role="button"
+      tabIndex={playable ? 0 : -1}
+      aria-disabled={!playable}
+      aria-current={isPlaying ? "true" : undefined}
+      aria-label={`Episode ${ep.episode_number}: ${ep.name}${epWatched ? ", watched" : ""}`}
+      onClick={play}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          play();
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!restricted && !epUnreleased)
-          onContextMenu({ x: e.clientX, y: e.clientY, pk });
+        if (playable) onContextMenu({ x: e.clientX, y: e.clientY, pk });
       }}
       style={epUnreleased ? { cursor: "default" } : undefined}
     >
+      <div className="episode-row__num" aria-hidden="true">
+        {ep.episode_number}
+      </div>
       <div className="episode-thumb">
         {ep.still_path ? (
-          <img
-            src={imgUrl(ep.still_path, "w300")}
-            alt={ep.name}
-            loading="lazy"
-          />
+          <img src={imgUrl(ep.still_path, "w300")} alt="" loading="lazy" />
         ) : (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--text3)",
-            }}
-          >
+          <div className="episode-thumb__empty">
             <PlayIcon />
           </div>
         )}
         {restricted ? (
           <div className="episode-restricted-overlay">
-            🔒<span>Inappropriate for your age</span>
+            <RatingLockIcon size={16} />
+            <span>Restricted</span>
           </div>
         ) : epUnreleased ? (
           <div className="episode-restricted-overlay">
-            🔒<span>Unreleased</span>
+            <RatingLockIcon size={16} />
+            <span>Coming soon</span>
             <span>{getDaysUntilRelease(ep.air_date)}</span>
           </div>
         ) : isPlaying ? (
@@ -2815,47 +3108,6 @@ const EpisodeCard = memo(function EpisodeCard({
             <PlayIcon />
           </div>
         )}
-      </div>
-      <div className="episode-info">
-        <div
-          className="episode-num"
-          style={{ display: "flex", alignItems: "center", gap: 5 }}
-        >
-          E{ep.episode_number}
-          {epWatched && <WatchedIcon size={14} />}
-          {epDownload && (
-            <span
-              className="ep-downloaded-badge"
-              title={
-                epDownload.status === "downloading"
-                  ? "Downloading… - click to view in Downloads"
-                  : "Downloaded - click to view in Downloads"
-              }
-              style={{
-                borderColor:
-                  epDownload.status === "downloading"
-                    ? "rgba(229,9,20,0.5)"
-                    : "rgba(72,199,116,0.5)",
-                color:
-                  epDownload.status === "downloading"
-                    ? "var(--red)"
-                    : "#4caf50",
-                background:
-                  epDownload.status === "downloading"
-                    ? "rgba(229,9,20,0.12)"
-                    : "rgba(72,199,116,0.18)",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onGoToDownloads?.(epDownload.id);
-              }}
-            >
-              ↓
-            </span>
-          )}
-        </div>
-        <div className="episode-name">{ep.name}</div>
-        <EpisodeDesc overview={ep.overview} episodeName={ep.name} />
         {!epWatched && epPct > 0 && (
           <div className="episode-progress-bar">
             <div
@@ -2864,6 +3116,52 @@ const EpisodeCard = memo(function EpisodeCard({
             />
           </div>
         )}
+      </div>
+      <div className="episode-info">
+        <div className="episode-row__head">
+          <div className="episode-name">{ep.name}</div>
+          <div className="episode-row__meta">
+            {playable && onToggleWatched && (
+              <button
+                type="button"
+                className={`episode-row__watched${epWatched ? " is-on" : ""}`}
+                aria-pressed={epWatched}
+                aria-label={epWatched ? "Mark as unwatched" : "Mark as watched"}
+                title={epWatched ? "Watched. Click to mark as unwatched" : "Mark as watched"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleWatched();
+                }}
+              >
+                {epWatched ? <WatchedIcon size={16} /> : <CheckIcon size={14} />}
+              </button>
+            )}
+            {epDownload && (
+              <button
+                type="button"
+                className={`ep-downloaded-badge${epDownload.status === "downloading" ? " is-downloading" : ""}`}
+                title={
+                  epDownload.status === "downloading"
+                    ? "Downloading. View in Downloads"
+                    : "Downloaded. View in Downloads"
+                }
+                aria-label={
+                  epDownload.status === "downloading"
+                    ? "Downloading, view in Downloads"
+                    : "Downloaded, view in Downloads"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGoToDownloads?.(epDownload.id);
+                }}
+              >
+                <DownloadIcon size={12} />
+              </button>
+            )}
+            {ep.runtime > 0 && !epUnreleased && <span>{ep.runtime}m</span>}
+          </div>
+        </div>
+        <EpisodeDesc overview={ep.overview} episodeName={ep.name} />
       </div>
     </div>
   );

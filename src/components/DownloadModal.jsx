@@ -1,5 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import { CloseIcon, DownloadIcon, SettingsIcon, SubtitlesIcon } from "./Icons";
+import { useModal } from "../utils/useModal";
+import {
+  CloseIcon,
+  DownloadIcon,
+  SettingsIcon,
+  SubtitlesIcon,
+  AccessibilityIcon,
+  BotIcon,
+  PlayIcon,
+  WarningIcon,
+  InfoIcon,
+  PlusIcon,
+  CheckIcon,
+} from "./Icons";
 import {
   storage,
   STORAGE_KEYS,
@@ -30,6 +43,7 @@ export function SubtitleBrowser({
   const [browseResults, setBrowseResults] = useState(null);
   const [browsing, setBrowsing] = useState(false);
   const [browseError, setBrowseError] = useState(null);
+  const { dialogProps, backdropProps, titleId } = useModal(onClose);
 
   const doSearch = async (lang) => {
     setBrowsing(true);
@@ -51,7 +65,7 @@ export function SubtitleBrowser({
           errMsg.toLowerCase().includes("cannot consume");
         setBrowseError(
           is403
-            ? "API error 403 - your SubDL or Wyzie API key is missing or invalid. Add a valid key in Settings."
+            ? "API error 403 — your SubDL or Wyzie API key is missing or invalid. Add a valid key in Settings."
             : errMsg,
         );
         setBrowseResults([]);
@@ -66,90 +80,51 @@ export function SubtitleBrowser({
 
   useEffect(() => {
     doSearch(langFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 999999,
-        background: "rgba(0,0,0,0.75)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={() => onClose()}
-    >
+    <div className="lumen-dialog-backdrop" {...backdropProps}>
       <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          width: 580,
-          maxWidth: "95vw",
-          maxHeight: "80vh",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
-        }}
-        onClick={(e) => e.stopPropagation()}
+        className="lumen-dialog lumen-dialog--md"
+        style={{ maxHeight: "80vh" }}
+        {...dialogProps}
+        aria-labelledby={titleId}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 15,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+        <div className="lumen-dialog__header">
+          <div className="lumen-dialog__title">
+            <SubtitlesIcon size={16} />
+            <span id={titleId}>Browse subtitles</span>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            aria-label="Close"
           >
-            <SubtitlesIcon size={14} /> Browse Subtitles
-            {selectedSubs.length > 0
-              ? ` · ${selectedSubs.length} selected`
-              : ""}
-          </span>
-          <button className="icon-btn" onClick={() => onClose()}>
-            <CloseIcon />
+            <CloseIcon size={18} />
           </button>
         </div>
 
         <div
+          className="lumen-dialog__section"
           style={{
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--border)",
             display: "flex",
-            gap: 8,
+            gap: 10,
             alignItems: "center",
             flexWrap: "wrap",
           }}
         >
-          <span style={{ fontSize: 12, color: "var(--text3)" }}>Language:</span>
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>Language</span>
           <select
+            aria-label="Subtitle language"
             value={langFilter}
             onChange={(e) => {
               setLangFilter(e.target.value);
               doSearch(e.target.value);
             }}
-            style={{
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              color: "var(--text)",
-              padding: "5px 10px",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
+            className="lumen-input"
+            style={{ width: "auto", height: 32, padding: "0 10px", fontSize: 12 }}
           >
             <option value="">All languages</option>
             {SUBTITLE_LANGUAGES.map((l) => (
@@ -160,7 +135,7 @@ export function SubtitleBrowser({
           </select>
         </div>
 
-        <div style={{ overflowY: "auto", flex: 1, padding: "4px 0" }}>
+        <div className="lumen-dialog__body lumen-dialog__body--flush">
           {browsing && (
             <div
               style={{
@@ -168,7 +143,7 @@ export function SubtitleBrowser({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 10,
-                padding: 24,
+                padding: 28,
                 color: "var(--text3)",
                 fontSize: 13,
               }}
@@ -176,25 +151,22 @@ export function SubtitleBrowser({
               <div
                 className="spinner"
                 style={{ width: 16, height: 16, borderWidth: 2 }}
-              />{" "}
-              Searching…
+              />
+              <span>Searching…</span>
             </div>
           )}
           {browseError && (
-            <div
-              style={{
-                padding: "16px 20px",
-                color: "var(--red)",
-                fontSize: 13,
-              }}
-            >
-              ⚠ {browseError}
+            <div style={{ padding: "16px 24px" }}>
+              <div className="lumen-callout lumen-callout--danger">
+                <WarningIcon size={15} />
+                <span>{browseError}</span>
+              </div>
             </div>
           )}
           {!browsing && browseResults?.length === 0 && (
             <div
               style={{
-                padding: "20px",
+                padding: 24,
                 color: "var(--text3)",
                 fontSize: 13,
                 textAlign: "center",
@@ -209,8 +181,10 @@ export function SubtitleBrowser({
                 (s) => s.file_id === r.file_id,
               );
               return (
-                <div
+                <button
+                  type="button"
                   key={r.file_id}
+                  aria-pressed={isSelected}
                   onClick={() => {
                     setSelectedSubs((prev) =>
                       isSelected
@@ -218,76 +192,25 @@ export function SubtitleBrowser({
                         : [...prev, r],
                     );
                   }}
-                  style={{
-                    padding: "9px 16px",
-                    cursor: "pointer",
-                    borderBottom: "1px solid var(--border)",
-                    background: isSelected
-                      ? "rgba(229,9,20,0.08)"
-                      : "transparent",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    transition: "background 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected)
-                      e.currentTarget.style.background = "var(--surface2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isSelected
-                      ? "rgba(229,9,20,0.08)"
-                      : "transparent";
-                  }}
+                  className={`lumen-sub-row${isSelected ? " lumen-sub-row--selected" : ""}`}
                 >
-                  {/* Checkbox */}
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 3,
-                      border: `2px solid ${isSelected ? "var(--red)" : "var(--border)"}`,
-                      background: isSelected ? "var(--red)" : "transparent",
-                      flexShrink: 0,
-                      marginTop: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "all 0.15s",
-                    }}
+                  <span
+                    className={`lumen-checkbox${isSelected ? " lumen-checkbox--checked" : ""}`}
+                    style={{ marginTop: 2 }}
                   >
-                    {isSelected && (
-                      <span
-                        style={{ color: "#fff", fontSize: 10, lineHeight: 1 }}
-                      >
-                        ✓
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
+                    {isSelected && <CheckIcon size={11} />}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 5,
+                        gap: 6,
                         marginBottom: 3,
                         flexWrap: "wrap",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: "1px 6px",
-                          borderRadius: 3,
-                          background: "rgba(99,202,183,0.15)",
-                          color: "#63cab7",
-                          border: "1px solid rgba(99,202,183,0.3)",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {r.language}
-                      </span>
+                      <span className="lumen-sub-lang">{r.language}</span>
                       <span style={sourceBadgeStyle(r)}>
                         {sourceBadgeLabel(r)}
                       </span>
@@ -296,7 +219,7 @@ export function SubtitleBrowser({
                           style={{ fontSize: 10, color: "var(--text3)" }}
                           title="Hearing impaired"
                         >
-                          ♿
+                          <AccessibilityIcon size={11} />
                         </span>
                       )}
                       {r.ai_translated && (
@@ -304,20 +227,21 @@ export function SubtitleBrowser({
                           style={{ fontSize: 10, color: "var(--text3)" }}
                           title="AI translated"
                         >
-                          🤖
+                          <BotIcon size={11} />
                         </span>
                       )}
                       {r.from_trusted && (
                         <span
-                          style={{ fontSize: 10, color: "#4caf50" }}
+                          style={{ fontSize: 11, color: "var(--success)" }}
                           title="Trusted"
                         >
-                          ✓
+                          <CheckIcon size={11} />
                         </span>
                       )}
-                    </div>
-                    <div
+                    </span>
+                    <span
                       style={{
+                        display: "block",
                         fontSize: 13,
                         color: "var(--text)",
                         marginBottom: 2,
@@ -329,36 +253,30 @@ export function SubtitleBrowser({
                       {r.release ||
                         r.file_name ||
                         `${r.language.toUpperCase()} subtitle`}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                    </span>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--text3)" }}>
                       {r.uploader} · {(r.download_count || 0).toLocaleString()}{" "}
                       downloads
-                    </div>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
               );
             })}
         </div>
 
         <div
-          style={{
-            padding: "10px 16px",
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
+          className="lumen-dialog__footer"
+          style={{ justifyContent: "space-between" }}
         >
-          <span style={{ fontSize: 11, color: "var(--text3)" }}>
+          <span role="status" style={{ fontSize: 12, color: "var(--text3)" }}>
             {selectedSubs.length === 0
-              ? "Click rows to select subtitles"
+              ? "Select subtitles to download"
               : `${selectedSubs.length} subtitle${selectedSubs.length > 1 ? "s" : ""} selected`}
           </span>
           <button
-            className="btn btn-primary"
-            style={{ padding: "6px 18px", fontSize: 13 }}
-            onClick={() => onClose()}
+            type="button"
+            className="btn btn-primary btn--sm"
+            onClick={onClose}
           >
             Done
           </button>
@@ -387,11 +305,14 @@ export default function DownloadModal({
   const [downloadPath, setDownloadPath] = useState(
     () => storage.get("downloadPath") || "",
   );
+  const [draftDownloadPath, setDraftDownloadPath] = useState(downloadPath);
   const [settingPath, setSettingPath] = useState(false);
   const [downloader, setDownloader] = useState(null);
   const [checking, setChecking] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState(null);
-  const [externalStatus, setExternalStatus] = useState(null); // null | {ok, text}
+  const [externalStatus, setExternalStatus] = useState(null);
+  const startingDownload = downloadStatus === "starting";
+  const { dialogProps, backdropProps, titleId } = useModal(startingDownload ? null : onClose);
 
   const [subEnabled, setSubEnabled] = useState(
     () =>
@@ -399,7 +320,7 @@ export default function DownloadModal({
       storage.get(STORAGE_KEYS.SUBTITLE_ENABLED) !== "0",
   );
   const [subdlApiKey, setSubdlApiKey] = useState("");
-  const [wyzieApiKey, setWyzieApiKey] = useState(null); // null = not yet loaded
+  const [wyzieApiKey, setWyzieApiKey] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -409,13 +330,13 @@ export default function DownloadModal({
     ]).then(([subdl, wyzie]) => {
       if (!mounted) return;
       if (subdl) setSubdlApiKey(subdl);
-      const wyzieKey = wyzie || "";
-      setWyzieApiKey(wyzieKey);
+      setWyzieApiKey(wyzie || "");
     });
     return () => {
       mounted = false;
     };
   }, []);
+
   const defaultLang = storage.get(STORAGE_KEYS.SUBTITLE_LANG) || "en";
 
   const [subResults, setSubResults] = useState(null);
@@ -473,7 +394,7 @@ export default function DownloadModal({
             errMsg.toLowerCase().includes("cannot consume");
           setSubSearchError(
             is403
-              ? "API error 403 - your SubDL or Wyzie API key is missing or invalid. Add a valid key in Settings."
+              ? "API error 403 — your SubDL or Wyzie API key is missing or invalid. Add a valid key in Settings."
               : errMsg,
           );
           setSubResults([]);
@@ -493,9 +414,10 @@ export default function DownloadModal({
 
   useEffect(() => {
     if (!m3u8Url || !subEnabled || !canSearchOS) return;
-    if (wyzieApiKey === null) return; // still loading
+    if (wyzieApiKey === null) return;
     if (!wyzieApiKey && !subdlApiKey) return;
     searchSubtitles(defaultLang);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m3u8Url, subEnabled, wyzieApiKey]);
 
   const pickBinaryFolder = async () => {
@@ -504,18 +426,20 @@ export default function DownloadModal({
   };
   const pickDownloadFolder = async () => {
     const folder = await window.electron.pickFolder();
-    if (folder) {
-      setDownloadPath(folder);
-      storage.set("downloadPath", folder);
-      setSettingPath(false);
-    }
+    if (folder) saveDownloadFolder(folder);
+  };
+
+  const saveDownloadFolder = (path) => {
+    setDownloadPath(path);
+    setDraftDownloadPath(path);
+    storage.set("downloadPath", path);
+    setSettingPath(false);
   };
 
   const handleOpenExternal = async () => {
     if (!m3u8Url || !isElectron) return;
-    setExternalStatus({ ok: true, text: "Opening …" });
+    setExternalStatus({ ok: true, text: "Opening…" });
     try {
-      // Pass found subtitles (intercepted + selected from search) to the player
       const subs = [...subtitles];
       if (subEnabled) {
         for (const sub of selectedSubs) {
@@ -531,7 +455,7 @@ export default function DownloadModal({
         res?.ok
           ? {
               ok: true,
-              text: `✓ Opened in ${res.player === "vlc" ? "VLC" : "mpv"}`,
+              text: `Opened in ${res.player === "vlc" ? "VLC" : "mpv"}`,
             }
           : { ok: false, text: res?.error || "Could not open external player" },
       );
@@ -541,10 +465,10 @@ export default function DownloadModal({
   };
 
   const handleDownload = async () => {
-    if (!downloader?.token || !downloadPath || !m3u8Url) return;
+    if (startingDownload || !downloader?.token || !downloadPath || !m3u8Url) return;
     setDownloadStatus("starting");
 
-    let resolvedSubs = [...subtitles];
+    const resolvedSubs = [...subtitles];
     if (subEnabled && selectedSubs.length > 0) {
       for (const sub of selectedSubs) {
         try {
@@ -583,7 +507,7 @@ export default function DownloadModal({
       episode,
       posterPath: posterPath || null,
       tmdbId: tmdbId || mediaId || null,
-    });
+    }).catch((error) => ({ ok: false, error: error.message }));
 
     if (result.ok) {
       onDownloadStarted?.({
@@ -615,143 +539,148 @@ export default function DownloadModal({
     }
   };
 
-  // ── No download path ───────────────────────────────────────────────────────
-  if (!downloadPath || settingPath) {
-    return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="download-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="download-modal-header">
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <DownloadIcon /> Set Download Folder
-            </span>
-            <button className="icon-btn" onClick={onClose}>
-              <CloseIcon />
-            </button>
-          </div>
-          <div style={{ padding: 24 }}>
-            <div
-              style={{
-                fontSize: 14,
-                color: "var(--text2)",
-                marginBottom: 20,
-                lineHeight: 1.6,
-              }}
-            >
-              {settingPath ? (
-                "Choose where downloaded videos should be saved:"
-              ) : (
-                <>
-                  <span style={{ color: "var(--red)", fontWeight: 600 }}>
-                    No download folder set.
-                  </span>
-                  <br />
-                  Choose where to save downloaded videos:
-                </>
-              )}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-                marginBottom: 16,
-              }}
-            >
-              <input
-                className="apikey-input"
-                style={{ flex: 1, minWidth: 200, marginBottom: 0 }}
-                placeholder="/home/you/Movies"
-                value={downloadPath}
-                onChange={(e) => setDownloadPath(e.target.value)}
-              />
-              {isElectron && (
-                <button
-                  className="btn btn-secondary"
-                  onClick={pickDownloadFolder}
-                >
-                  Browse …
-                </button>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1, justifyContent: "center" }}
-                disabled={!downloadPath.trim()}
-                onClick={() => {
-                  storage.set("downloadPath", downloadPath.trim());
-                  setSettingPath(false);
-                }}
-              >
-                Confirm
-              </button>
-              {settingPath && (
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => setSettingPath(false)}
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-            {onOpenSettings && (
-              <div style={{ marginTop: 14, textAlign: "center" }}>
-                <button
-                  className="btn btn-ghost"
-                  style={{ fontSize: 12, color: "var(--text3)" }}
-                  onClick={() => {
-                    onClose();
-                    onOpenSettings("downloads");
-                  }}
-                >
-                  <SettingsIcon /> Open Settings
-                </button>
-              </div>
-            )}
-          </div>
+  const showFolderSettings = !downloadPath || settingPath;
+  const folderSettings = showFolderSettings && (
+    <div className="lumen-dialog__body">
+      {!settingPath && (
+        <div
+          className="lumen-callout lumen-callout--danger"
+          style={{ marginBottom: 16 }}
+        >
+          <WarningIcon size={15} />
+          <span>
+            No download folder set. Choose where downloaded videos should
+            be saved.
+          </span>
         </div>
-      </div>
-    );
-  }
+      )}
+      {settingPath && (
+        <div
+          style={{
+            fontSize: 13,
+            color: "var(--text2)",
+            marginBottom: 14,
+          }}
+        >
+          Choose where downloaded videos should be saved:
+        </div>
+      )}
 
-  // ── Main modal ─────────────────────────────────────────────────────────────
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 18,
+        }}
+      >
+        <input
+          className="lumen-input"
+          style={{ flex: 1, minWidth: 200 }}
+          placeholder="/home/you/Movies"
+          aria-label="Download folder"
+          data-modal-initial-focus
+          value={draftDownloadPath}
+          onChange={(e) => setDraftDownloadPath(e.target.value)}
+        />
+        {isElectron && (
+          <button
+            type="button"
+            className="btn btn-secondary btn--sm"
+            onClick={pickDownloadFolder}
+          >
+            Browse
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ flex: 1 }}
+          disabled={!draftDownloadPath.trim()}
+          onClick={() => saveDownloadFolder(draftDownloadPath.trim())}
+        >
+          Confirm
+        </button>
+        {settingPath && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setSettingPath(false)}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+
+      {onOpenSettings && (
+        <div style={{ marginTop: 14, textAlign: "center" }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn--sm"
+            onClick={() => {
+              onClose();
+              onOpenSettings("downloads");
+            }}
+          >
+            <SettingsIcon size={14} />
+            Open settings
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="download-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="download-modal-header">
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <DownloadIcon /> Download
-            </span>
-            <button className="icon-btn" onClick={onClose}>
-              <CloseIcon />
+      <div className="lumen-dialog-backdrop" {...backdropProps}>
+        <div
+          className="lumen-dialog lumen-dialog--md"
+          {...dialogProps}
+          aria-labelledby={titleId}
+        >
+          <div className="lumen-dialog__header">
+            <div className="lumen-dialog__title">
+              <DownloadIcon size={16} />
+              <span id={titleId}>{showFolderSettings ? "Set download folder" : "Download"}</span>
+            </div>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={onClose}
+              aria-label="Close"
+              disabled={startingDownload}
+            >
+              <CloseIcon size={18} />
             </button>
           </div>
 
-          {!m3u8Url && (
-            <div className="download-waiting">
+          {showFolderSettings ? (
+            folderSettings
+          ) : !m3u8Url ? (
+            <div className="download-waiting" role="status">
               <div
                 className="spinner"
-                style={{ width: 24, height: 24, borderWidth: 2 }}
+                style={{ width: 22, height: 22, borderWidth: 2 }}
               />
-              Waiting for stream URL … (start the video first)
+              <span>Waiting for stream URL… (start the video first)</span>
             </div>
-          )}
-
-          {m3u8Url && (
-            <>
-              <div className="download-url-block">
-                <div className="download-url-label">Stream URL found</div>
+          ) : (
+            <div className="lumen-dialog__body lumen-dialog__body--flush">
+              <div className="lumen-dialog__section">
+                <div className="lumen-dialog__section-label">
+                  Stream URL found
+                </div>
                 <code className="download-url-code">{m3u8Url}</code>
               </div>
 
-              {/* ── Open in external player ───────────────────────────────── */}
               {isElectron && (
                 <div
+                  className="lumen-dialog__section"
                   style={{
-                    padding: "12px 20px",
-                    borderBottom: "1px solid var(--border)",
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
@@ -759,41 +688,42 @@ export default function DownloadModal({
                   }}
                 >
                   <button
-                    className="btn btn-secondary"
+                    type="button"
+                    className="btn btn-secondary btn--sm"
                     onClick={handleOpenExternal}
                     title="Play this stream in mpv or VLC"
                   >
-                    ▶ Open in external player
+                    <PlayIcon size={13} />
+                    Open in external player
                   </button>
                   {externalStatus && (
                     <span
                       style={{
                         fontSize: 12,
                         color: externalStatus.ok
-                          ? "var(--text3)"
+                          ? "var(--success)"
                           : "var(--red)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
                       }}
                     >
+                      {externalStatus.ok && <CheckIcon size={12} />}
                       {externalStatus.text}
                     </span>
                   )}
                 </div>
               )}
 
-              {/* ── Subtitle section ──────────────────────────────────────── */}
-              <div
-                style={{
-                  padding: "12px 20px",
-                  borderBottom: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                }}
-              >
+              {/* Subtitle section */}
+              <div className="lumen-dialog__section">
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: "space-between",
                     gap: 10,
-                    marginBottom: subEnabled ? 8 : 0,
+                    marginBottom: subEnabled ? 10 : 0,
                   }}
                 >
                   <span
@@ -802,54 +732,38 @@ export default function DownloadModal({
                       fontWeight: 600,
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
+                      gap: 7,
+                      color: "var(--text)",
                     }}
                   >
-                    <SubtitlesIcon size={14} /> Subtitles
+                    <SubtitlesIcon size={14} />
+                    Subtitles
                   </span>
-                  <div style={{ flex: 1 }} />
-                  {/* Toggle */}
                   <button
-                    onClick={() => {
-                      const next = !subEnabled;
-                      setSubEnabled(next);
-                      storage.set(STORAGE_KEYS.SUBTITLE_ENABLED, next ? 1 : 0);
-                      if (next && canSearchOS) {
-                        if (wyzieApiKey || subdlApiKey) {
-                          if (!subResults) searchSubtitles(defaultLang);
-                        }
-                      }
-                    }}
-                    title={
+                    type="button"
+                    role="switch"
+                    aria-checked={subEnabled}
+                    aria-label={
                       subEnabled
                         ? "Disable subtitle download"
                         : "Enable subtitle download"
                     }
-                    style={{
-                      width: 36,
-                      height: 20,
-                      borderRadius: 10,
-                      border: "1px solid var(--border)",
-                      cursor: "pointer",
-                      background: subEnabled ? "var(--red)" : "var(--surface2)",
-                      position: "relative",
-                      transition: "background 0.2s",
-                      flexShrink: 0,
-                      outline: "none",
+                    className={`lumen-switch${subEnabled ? " lumen-switch--on" : ""}`}
+                    onClick={() => {
+                      const next = !subEnabled;
+                      setSubEnabled(next);
+                      storage.set(STORAGE_KEYS.SUBTITLE_ENABLED, next ? 1 : 0);
+                      if (
+                        next &&
+                        canSearchOS &&
+                        (wyzieApiKey || subdlApiKey) &&
+                        !subResults
+                      ) {
+                        searchSubtitles(defaultLang);
+                      }
                     }}
                   >
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 2,
-                        left: subEnabled ? 18 : 2,
-                        width: 14,
-                        height: 14,
-                        borderRadius: "50%",
-                        background: "#fff",
-                        transition: "left 0.2s",
-                      }}
-                    />
+                    <span className="lumen-switch__knob" />
                   </button>
                 </div>
 
@@ -857,51 +771,37 @@ export default function DownloadModal({
                   <>
                     {!canSearchOS && (
                       <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                        No TMDB ID: Subtitle search unavailable
+                        No TMDB ID — subtitle search unavailable.
                       </div>
                     )}
                     {canSearchOS &&
                       !wyzieApiKey &&
                       !subdlApiKey &&
                       wyzieApiKey !== null && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "var(--text2)",
-                            background: "var(--surface2)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                            padding: "10px 12px",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                          }}
-                        >
-                          <span>
-                            <span
-                              style={{ color: "var(--red)", fontWeight: 600 }}
-                            >
-                              No subtitle API key set.
-                            </span>{" "}
-                            Add/Generate a Wyzie or SubDL key in Settings to
-                            enable subtitle search.
-                          </span>
-                          {onOpenSettings && (
-                            <button
-                              className="btn btn-ghost"
-                              style={{
-                                alignSelf: "flex-start",
-                                padding: "2px 8px",
-                                fontSize: 11,
-                              }}
-                              onClick={() => {
-                                onClose();
-                                onOpenSettings("subtitles");
-                              }}
-                            >
-                              <SettingsIcon /> Open Settings → Subtitles
-                            </button>
-                          )}
+                        <div className="lumen-callout">
+                          <WarningIcon size={15} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ marginBottom: 8 }}>
+                              <strong style={{ color: "var(--text)" }}>
+                                No subtitle API key set.
+                              </strong>{" "}
+                              Add a Wyzie or SubDL key in Settings to enable
+                              subtitle search.
+                            </div>
+                            {onOpenSettings && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn--sm"
+                                onClick={() => {
+                                  onClose();
+                                  onOpenSettings("subtitles");
+                                }}
+                              >
+                                <SettingsIcon size={13} />
+                                Open subtitle settings
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     {subSearching && (
@@ -918,8 +818,10 @@ export default function DownloadModal({
                           className="spinner"
                           style={{ width: 12, height: 12, borderWidth: 1.5 }}
                         />
-                        Searching for {LANG_LABEL[defaultLang] || defaultLang}{" "}
-                        subtitles…
+                        <span>
+                          Searching for {LANG_LABEL[defaultLang] || defaultLang}{" "}
+                          subtitles…
+                        </span>
                       </div>
                     )}
                     {subSearchError && !subSearching && (
@@ -933,24 +835,25 @@ export default function DownloadModal({
                           flexWrap: "wrap",
                         }}
                       >
-                        ⚠ {subSearchError}
+                        <WarningIcon size={13} />
+                        <span>{subSearchError}</span>
                         <button
-                          className="btn btn-ghost"
-                          style={{ padding: "2px 8px", fontSize: 11 }}
+                          type="button"
+                          className="btn btn-ghost btn--sm"
                           onClick={() => searchSubtitles(defaultLang)}
                         >
                           Retry
                         </button>
                         {onOpenSettings && (
                           <button
-                            className="btn btn-ghost"
-                            style={{ padding: "2px 8px", fontSize: 11 }}
+                            type="button"
+                            className="btn btn-ghost btn--sm"
                             onClick={() => {
                               onClose();
                               onOpenSettings("subtitles");
                             }}
                           >
-                            Open Settings
+                            Open settings
                           </button>
                         )}
                       </div>
@@ -964,109 +867,71 @@ export default function DownloadModal({
                             display: "flex",
                             flexDirection: "column",
                             gap: 6,
-                            width: "100%",
                           }}
                         >
                           {selectedSubs.length > 0 ? (
-                            <>
-                              {selectedSubs.map((sub) => (
-                                <div
-                                  key={sub.file_id}
+                            selectedSubs.map((sub) => (
+                              <div key={sub.file_id} className="lumen-sub-item">
+                                <span className="lumen-sub-lang">
+                                  {sub.language}
+                                </span>
+                                <span style={sourceBadgeStyle(sub)}>
+                                  {sourceBadgeLabel(sub)}
+                                </span>
+                                <span
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    background: "rgba(255,255,255,0.03)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: 6,
-                                    padding: "4px 8px",
+                                    fontSize: 12,
+                                    color: "var(--text2)",
+                                    flex: 1,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    minWidth: 0,
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      fontSize: 10,
-                                      fontWeight: 700,
-                                      padding: "1px 5px",
-                                      borderRadius: 3,
-                                      background: "rgba(99,202,183,0.15)",
-                                      color: "#63cab7",
-                                      border: "1px solid rgba(99,202,183,0.3)",
-                                      textTransform: "uppercase",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {sub.language}
-                                  </span>
-                                  <span style={sourceBadgeStyle(sub)}>
-                                    {sourceBadgeLabel(sub)}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 12,
-                                      color: "var(--text2)",
-                                      flex: 1,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                      minWidth: 0,
-                                    }}
-                                  >
-                                    {sub.release ||
-                                      sub.file_name ||
-                                      `${sub.language.toUpperCase()} subtitle`}
-                                  </span>
-                                  <button
-                                    className="btn btn-ghost"
-                                    style={{
-                                      padding: "1px 6px",
-                                      fontSize: 11,
-                                      flexShrink: 0,
-                                      color: "var(--text3)",
-                                    }}
-                                    onClick={() =>
-                                      setSelectedSubs((prev) =>
-                                        prev.filter(
-                                          (s) => s.file_id !== sub.file_id,
-                                        ),
-                                      )
-                                    }
-                                    title="Remove"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                            </>
+                                  {sub.release ||
+                                    sub.file_name ||
+                                    `${sub.language.toUpperCase()} subtitle`}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="icon-btn"
+                                  onClick={() =>
+                                    setSelectedSubs((prev) =>
+                                      prev.filter(
+                                        (s) => s.file_id !== sub.file_id,
+                                      ),
+                                    )
+                                  }
+                                  title="Remove"
+                                  aria-label="Remove subtitle"
+                                >
+                                  <CloseIcon size={13} />
+                                </button>
+                              </div>
+                            ))
                           ) : (
-                            <span
-                              style={{ fontSize: 12, color: "var(--text3)" }}
-                            >
+                            <span style={{ fontSize: 12, color: "var(--text3)" }}>
                               No subtitles found for{" "}
-                              {LANG_LABEL[defaultLang] || defaultLang}
+                              {LANG_LABEL[defaultLang] || defaultLang}.
                             </span>
                           )}
-                          <div
-                            style={{ display: "flex", gap: 8, marginTop: 2 }}
-                          >
+                          <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                             <button
-                              className="btn btn-ghost"
-                              style={{ padding: "3px 10px", fontSize: 11 }}
+                              type="button"
+                              className="btn btn-secondary btn--sm"
                               onClick={() => setShowBrowser(true)}
                             >
+                              <PlusIcon size={13} />
                               {selectedSubs.length > 0
-                                ? "＋ Add / Change"
+                                ? "Add / change"
                                 : "Browse"}
                             </button>
                             {selectedSubs.length > 0 && (
                               <button
-                                className="btn btn-ghost"
-                                style={{
-                                  padding: "3px 8px",
-                                  fontSize: 11,
-                                  color: "var(--text3)",
-                                }}
+                                type="button"
+                                className="btn btn-ghost btn--sm"
                                 onClick={() => setSelectedSubs([])}
-                                title="Clear all"
                               >
                                 Clear all
                               </button>
@@ -1089,8 +954,8 @@ export default function DownloadModal({
                             Not searched yet
                           </span>
                           <button
-                            className="btn btn-ghost"
-                            style={{ padding: "3px 10px", fontSize: 11 }}
+                            type="button"
+                            className="btn btn-ghost btn--sm"
                             onClick={() => searchSubtitles(defaultLang)}
                           >
                             Search
@@ -1100,31 +965,36 @@ export default function DownloadModal({
                     {!subdlApiKey && (
                       <div
                         style={{
-                          marginTop: 5,
+                          marginTop: 8,
                           fontSize: 11,
                           color: "var(--text3)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
                         }}
                       >
-                        💡 Add a free SubDL API key in Settings for better
-                        results
+                        <InfoIcon size={12} />
+                        <span>
+                          Add a free SubDL API key in Settings for more results.
+                        </span>
                       </div>
                     )}
                   </>
                 )}
               </div>
 
-              {/* ── Downloader setup ──────────────────────────────────────── */}
-              {!downloader?.exists && (
+              {/* Downloader setup or ready */}
+              {!downloader?.exists ? (
                 <div className="download-instructions">
                   <div className="download-instructions-title">
-                    Set up Video Downloader
+                    Set up video downloader
                   </div>
                   <ol className="download-steps">
                     <li>
                       Download the latest release from{" "}
                       <a
                         className="download-link"
-                        href="#"
+                        href={releaseUrl}
                         onClick={(e) => {
                           e.preventDefault();
                           isElectron &&
@@ -1133,20 +1003,21 @@ export default function DownloadModal({
                       >
                         github.com/truelockmc/vid-dl-cli-only/releases/latest
                       </a>{" "}
-                      , for your OS: <code>{binaryHint}</code>
+                      for your OS: <code>{binaryHint}</code>
                     </li>
                     <li>Extract the release into a folder of your choice</li>
                     <li>
-                      Select that folder below, it must contain{" "}
+                      Select that folder below — it must contain{" "}
                       <code>_internal</code> and the binary
                     </li>
                   </ol>
                   <div className="download-folder-row">
                     <button
-                      className="btn btn-secondary"
+                      type="button"
+                      className="btn btn-secondary btn--sm"
                       onClick={pickBinaryFolder}
                     >
-                      Choose folder …
+                      Choose folder
                     </button>
                     {downloaderFolder && (
                       <span className="download-folder-path">
@@ -1159,8 +1030,8 @@ export default function DownloadModal({
                       <div
                         className="spinner"
                         style={{ width: 16, height: 16, borderWidth: 2 }}
-                      />{" "}
-                      Checking …
+                      />
+                      <span>Checking…</span>
                     </div>
                   )}
                   {!checking &&
@@ -1169,7 +1040,7 @@ export default function DownloadModal({
                     downloaderFolder && (
                       <div className="download-error">
                         {downloader.reason === "folder_permission" && (
-                          <>Permission denied, can't read the chosen folder.</>
+                          <>Permission denied — cannot read the chosen folder.</>
                         )}
                         {downloader.reason === "folder_unreadable" && (
                           <>Folder could not be read. Is it still accessible?</>
@@ -1185,19 +1056,17 @@ export default function DownloadModal({
                           <>
                             No executable binary found. On Linux, make sure the
                             binary has execute permissions (
-                            <code>chmod +x</code>
-                            ).
+                            <code>chmod +x</code>).
                           </>
                         )}
                       </div>
                     )}
                 </div>
-              )}
-
-              {downloader?.exists && (
+              ) : (
                 <div className="download-ready">
                   <div className="download-found-badge">
-                    ✓ Video Downloader found
+                    <CheckIcon size={14} />
+                    <span>Video downloader ready</span>
                   </div>
 
                   <div
@@ -1212,8 +1081,8 @@ export default function DownloadModal({
                       Wrong binary folder?
                     </span>
                     <button
-                      className="btn btn-ghost"
-                      style={{ padding: "4px 10px", fontSize: 12 }}
+                      type="button"
+                      className="btn btn-ghost btn--sm"
                       onClick={pickBinaryFolder}
                     >
                       Change
@@ -1222,15 +1091,18 @@ export default function DownloadModal({
 
                   {downloadStatus !== "ok" && (
                     <button
+                      type="button"
                       className="btn btn-primary"
                       onClick={handleDownload}
-                      disabled={downloadStatus === "starting"}
-                      style={{ width: "100%", justifyContent: "center" }}
+                      disabled={startingDownload}
+                      style={{ width: "100%" }}
                     >
-                      <DownloadIcon />
-                      {downloadStatus === "starting"
-                        ? "Starting …"
-                        : "Start Download"}
+                      <DownloadIcon size={16} />
+                      <span>
+                        {downloadStatus === "starting"
+                          ? "Starting…"
+                          : "Start download"}
+                      </span>
                     </button>
                   )}
 
@@ -1238,23 +1110,34 @@ export default function DownloadModal({
                     <div style={{ textAlign: "center", padding: "12px 0" }}>
                       <div
                         className="download-success"
-                        style={{ fontSize: 15, marginBottom: 8 }}
+                        role="status"
+                        style={{
+                          fontSize: 15,
+                          marginBottom: 10,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
                       >
-                        ✓ Download started!
+                        <CheckIcon size={16} />
+                        <span>Download started</span>
                       </div>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 13 }}
-                        onClick={onClose}
-                      >
-                        Close — track progress in Downloads
-                      </button>
+                      <div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn--sm"
+                          onClick={onClose}
+                        >
+                          Close — track progress in Downloads
+                        </button>
+                      </div>
                     </div>
                   )}
+
                   {downloadStatus &&
                     downloadStatus !== "ok" &&
                     downloadStatus !== "starting" && (
-                      <div className="download-error">{downloadStatus}</div>
+                      <div className="download-error" role="alert">{downloadStatus}</div>
                     )}
 
                   <div
@@ -1269,19 +1152,24 @@ export default function DownloadModal({
                       Save to: <code>{downloadPath}</code>
                     </span>
                     <button
-                      className="btn btn-ghost"
-                      style={{ padding: "4px 10px", fontSize: 12 }}
-                      onClick={() => setSettingPath(true)}
+                      type="button"
+                      className="btn btn-ghost btn--sm"
+                      disabled={startingDownload}
+                      onClick={() => {
+                        setDraftDownloadPath(downloadPath);
+                        setSettingPath(true);
+                      }}
                     >
                       Change
                     </button>
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
+
       {showBrowser && (
         <SubtitleBrowser
           tmdbId={tmdbId}

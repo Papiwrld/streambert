@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { useModal } from "../utils/useModal";
+import { CloseIcon, WarningIcon, CheckIcon, ExternalLinkIcon } from "./Icons";
 
 // ── Image component that proxies through Electron main process ────────────────
-// Fixes Codeberg (and other external) images being blocked by Electron's CSP.
-// Falls back to direct <img src> when not running in Electron.
 function ReleaseImage({ src, alt, style }) {
   const [resolvedSrc, setResolvedSrc] = useState(null);
 
@@ -10,7 +10,7 @@ function ReleaseImage({ src, alt, style }) {
     if (!src) return;
     if (window.electron?.fetchReleaseImage) {
       window.electron.fetchReleaseImage(src).then((dataUri) => {
-        setResolvedSrc(dataUri || src); // null means blocked/failed → try direct
+        setResolvedSrc(dataUri || src);
       });
     } else {
       setResolvedSrc(src);
@@ -30,9 +30,7 @@ function ReleaseImage({ src, alt, style }) {
   );
 }
 
-// ── Inline markdown + GitHub formatter ──────────────────────────────
-// Handles: ~~strike~~, **bold**, *italic*, _italic_, `code`,
-//          ![img](url), [link](url), bare https:// URLs, @mentions
+// ── Inline markdown + GitHub formatter ────────────────────────────────────────
 function inlineFormat(text) {
   const parts = [];
   const re =
@@ -70,11 +68,11 @@ function inlineFormat(text) {
           key={k++}
           style={{
             fontSize: 11,
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 3,
+            background: "var(--surface2)",
+            border: "1px solid var(--hairline)",
+            borderRadius: 4,
             padding: "1px 5px",
-            fontFamily: "monospace",
+            fontFamily: "ui-monospace, monospace",
             color: "var(--text)",
           }}
         >
@@ -93,7 +91,7 @@ function inlineFormat(text) {
               maxWidth: "100%",
               verticalAlign: "middle",
               borderRadius: 6,
-              border: "1px solid var(--border)",
+              border: "1px solid var(--hairline)",
             }}
           />,
         );
@@ -140,7 +138,6 @@ function inlineFormat(text) {
         </a>,
       );
     } else if (raw.startsWith("http")) {
-      // Shorten PR/issue URLs to "#41"
       let label = raw;
       try {
         const u = new URL(raw);
@@ -174,9 +171,7 @@ function inlineFormat(text) {
   return parts.length ? parts : text;
 }
 
-// ── Block-level markdown renderer ────────────────────────────────────────────
-// Handles: # headings, --- hr, > blockquote, 1. numbered list,
-//          - /* bullets, ![img](url), blank lines, paragraphs
+// ── Block-level markdown renderer ─────────────────────────────────────────────
 function renderChangelog(text) {
   if (!text) return null;
   const lines = text.split("\n");
@@ -186,18 +181,16 @@ function renderChangelog(text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // h3 ###
     if (line.startsWith("### ")) {
       elements.push(
         <div
           key={key++}
           style={{
             fontSize: 13,
-            fontWeight: 700,
+            fontWeight: 600,
             color: "var(--text)",
             marginTop: 14,
             marginBottom: 4,
-            letterSpacing: 0.3,
           }}
         >
           {inlineFormat(line.slice(4))}
@@ -206,18 +199,17 @@ function renderChangelog(text) {
       continue;
     }
 
-    // h2 ##
     if (line.startsWith("## ")) {
       elements.push(
         <div
           key={key++}
           style={{
             fontSize: 14,
-            fontWeight: 700,
+            fontWeight: 600,
             color: "var(--text)",
             marginTop: 16,
             marginBottom: 6,
-            borderBottom: "1px solid var(--border)",
+            borderBottom: "1px solid var(--hairline)",
             paddingBottom: 4,
           }}
         >
@@ -227,14 +219,13 @@ function renderChangelog(text) {
       continue;
     }
 
-    // h1 #
     if (line.startsWith("# ")) {
       elements.push(
         <div
           key={key++}
           style={{
             fontSize: 15,
-            fontWeight: 700,
+            fontWeight: 600,
             color: "var(--text)",
             marginTop: 16,
             marginBottom: 8,
@@ -246,13 +237,12 @@ function renderChangelog(text) {
       continue;
     }
 
-    // horizontal rule --- / *** / ___  (must come before bullet check)
     if (/^([-*_])\1{2,}\s*$/.test(line.trim())) {
       elements.push(
         <div
           key={key++}
           style={{
-            borderBottom: "1px solid var(--border)",
+            borderBottom: "1px solid var(--hairline)",
             margin: "12px 0",
           }}
         />,
@@ -260,13 +250,12 @@ function renderChangelog(text) {
       continue;
     }
 
-    // blockquote > …
     if (line.startsWith("> ")) {
       elements.push(
         <div
           key={key++}
           style={{
-            borderLeft: "3px solid var(--red)",
+            borderLeft: "2px solid var(--red)",
             paddingLeft: 10,
             margin: "4px 0",
             color: "var(--text3)",
@@ -281,7 +270,6 @@ function renderChangelog(text) {
       continue;
     }
 
-    // HTML img tag: <img ... src="..." ... alt="..." ...>
     const htmlImgMatch = line.match(/<img\b[^>]*\bsrc="([^"]+)"[^>]*>/i);
     if (htmlImgMatch) {
       const src = htmlImgMatch[1];
@@ -295,7 +283,7 @@ function renderChangelog(text) {
             style={{
               maxWidth: "100%",
               borderRadius: 8,
-              border: "1px solid var(--border)",
+              border: "1px solid var(--hairline)",
               display: "block",
             }}
           />
@@ -317,7 +305,6 @@ function renderChangelog(text) {
       continue;
     }
 
-    // standalone markdown image ![alt](url)
     const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
     if (imgMatch) {
       const [, alt, src] = imgMatch;
@@ -329,7 +316,7 @@ function renderChangelog(text) {
             style={{
               maxWidth: "100%",
               borderRadius: 8,
-              border: "1px solid var(--border)",
+              border: "1px solid var(--hairline)",
               display: "block",
             }}
             onError={(e) => {
@@ -354,7 +341,6 @@ function renderChangelog(text) {
       continue;
     }
 
-    // numbered list  1. …
     const numMatch = line.match(/^(\d+)\. (.*)$/);
     if (numMatch) {
       elements.push(
@@ -386,7 +372,6 @@ function renderChangelog(text) {
       continue;
     }
 
-    // unordered bullet - or *
     if (/^[-*] /.test(line)) {
       elements.push(
         <div
@@ -409,13 +394,11 @@ function renderChangelog(text) {
       continue;
     }
 
-    // blank line
     if (line.trim() === "") {
       elements.push(<div key={key++} style={{ height: 6 }} />);
       continue;
     }
 
-    // normal paragraph
     elements.push(
       <div
         key={key++}
@@ -441,14 +424,17 @@ export default function UpdateModal({
 }) {
   const { latest, current, url, changelog, assets, sourceLabel } = updateInfo;
 
-  const [phase, setPhase] = useState("idle"); // idle | downloading | installing | done | error
-  const [format, setFormat] = useState(null); // "appimage" | "deb" | "exe" | "dmg" | null
+  const [phase, setPhase] = useState("idle");
+  const [format, setFormat] = useState(null);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const cancelRef = useRef(false);
 
-  // Detect install format on mount
+  const busy = phase === "downloading" || phase === "installing";
+
+  const { dialogProps, backdropProps, titleId } = useModal(busy ? null : onClose);
+
   useEffect(() => {
     if (!window.electron?.detectUpdateFormat) return;
     let mounted = true;
@@ -460,12 +446,14 @@ export default function UpdateModal({
     };
   }, []);
 
-  // Listen for download progress from main process
   useEffect(() => {
     if (!window.electron?.onUpdateProgress) return;
     const handler = window.electron.onUpdateProgress((data) => {
       setProgress(data.percent ?? 0);
       setProgressLabel(data.label ?? "");
+      if (data.label === "Installing…") {
+        setPhase((current) => current === "downloading" ? "installing" : current);
+      }
     });
     return () => window.electron.offUpdateProgress(handler);
   }, []);
@@ -488,8 +476,7 @@ export default function UpdateModal({
       });
       if (cancelRef.current) return;
       if (!result.ok) throw new Error(result.error || "Update failed");
-      setPhase("installing");
-      setProgressLabel("Launching installer…");
+      setPhase("done");
     } catch (e) {
       if (cancelRef.current) return;
       setPhase("error");
@@ -498,6 +485,7 @@ export default function UpdateModal({
   };
 
   const handleCancel = () => {
+    if (phase === "installing") return;
     if (phase === "downloading") {
       cancelRef.current = true;
       window.electron?.cancelUpdate?.();
@@ -514,166 +502,74 @@ export default function UpdateModal({
       dmg: "macOS installer (Universal)",
     }[format] || "installer";
 
-  const busy = phase === "downloading" || phase === "installing";
-
   return (
     <div
-      onClick={busy ? undefined : handleCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 6000,
-        background: "rgba(0,0,0,0.78)",
-        backdropFilter: "blur(10px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        cursor: busy ? "default" : "auto",
-      }}
+      className="lumen-dialog-backdrop"
+      {...backdropProps}
+      style={{ cursor: busy ? "default" : "auto" }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "85vh",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
-          overflow: "hidden",
-        }}
+        className="lumen-dialog lumen-dialog--md"
+        {...dialogProps}
+        aria-labelledby={titleId}
       >
-        {/* ── Header ── */}
-        <div
-          style={{
-            padding: "24px 28px 16px",
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 4,
-                }}
-              >
-                <span style={{ fontSize: 20 }}>🎉</span>
-                <span
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: 22,
-                    letterSpacing: 1,
-                  }}
-                >
-                  UPDATE AVAILABLE
-                </span>
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--text3)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                {current && (
-                  <>
-                    <span style={{ color: "var(--text3)" }}>v{current}</span>
-                    <span style={{ color: "var(--text3)", fontSize: 11 }}>
-                      →
-                    </span>
-                  </>
-                )}
-                <a
-                  href={url}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.electron?.openExternal(url);
-                  }}
-                  style={{
-                    color: "var(--red)",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    cursor: "pointer",
-                  }}
-                  title={`View on ${sourceLabel || "GitHub"}`}
-                >
-                  v{latest} ↗
-                </a>
-                is ready to install
-                {format && (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text3)",
-                      background: "var(--surface2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 4,
-                      padding: "1px 7px",
-                    }}
-                  >
-                    {formatLabel}
-                  </span>
-                )}
-              </div>
+        <div className="lumen-dialog__header">
+          <div>
+            <div id={titleId} className="lumen-dialog__title" style={{ fontSize: 18 }}>
+              Update available
             </div>
-            <button
-              onClick={handleCancel}
-              disabled={busy}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                color: "var(--text3)",
-                cursor: busy ? "not-allowed" : "pointer",
-                fontSize: 18,
-                width: 28,
-                height: 28,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                opacity: busy ? 0.35 : 1,
-              }}
-            >
-              ×
-            </button>
+            <div className="lumen-dialog__subtitle">
+              {current && (
+                <>
+                  <span>v{current}</span>
+                  <span style={{ fontSize: 11 }}>→</span>
+                </>
+              )}
+              <a
+                href={url}
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.electron?.openExternal(url);
+                }}
+                style={{
+                  color: "var(--red)",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+                title={`View on ${sourceLabel || "GitHub"}`}
+              >
+                v{latest}
+                <ExternalLinkIcon size={12} />
+              </a>
+              <span>is ready to install</span>
+              {format && (
+                <span className="lumen-badge lumen-badge--neutral">
+                  {formatLabel}
+                </span>
+              )}
+            </div>
           </div>
+
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={handleCancel}
+            disabled={busy}
+            aria-label="Close"
+            data-modal-initial-focus
+            style={{ opacity: busy ? 0.35 : 1 }}
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
 
-        {/* ── Changelog ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
+        <div className="lumen-dialog__body">
           {changelog ? (
             <>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: 1.5,
-                  color: "var(--text3)",
-                  textTransform: "uppercase",
-                  marginBottom: 12,
-                }}
-              >
-                What's New
-              </div>
+              <div className="lumen-dialog__section-label">What's new</div>
               <div>{renderChangelog(changelog)}</div>
             </>
           ) : (
@@ -689,36 +585,22 @@ export default function UpdateModal({
           )}
         </div>
 
-        {/* ── Footer ── */}
         <div
-          style={{
-            padding: "16px 28px",
-            borderTop: "1px solid var(--border)",
-            flexShrink: 0,
-          }}
+          className="lumen-dialog__footer"
+          style={{ flexDirection: "column", alignItems: "stretch" }}
         >
-          {/* Active downloads warning */}
           {activeDownloads > 0 && phase === "idle" && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--red)",
-                marginBottom: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              ⚠ {activeDownloads} download{activeDownloads > 1 ? "s" : ""}{" "}
-              running, finish or cancel them before updating.
+            <div className="lumen-callout lumen-callout--danger">
+              <WarningIcon size={15} />
+              <span>
+                {activeDownloads} download{activeDownloads > 1 ? "s" : ""}{" "}
+                running — finish or cancel them before updating.
+              </span>
             </div>
           )}
 
-          {/* No format detected warning */}
           {!format && phase === "idle" && (
-            <div
-              style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12 }}
-            >
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>
               Could not detect install format. Use the{" "}
               <a
                 href={url}
@@ -726,7 +608,7 @@ export default function UpdateModal({
                   e.preventDefault();
                   window.electron?.openExternal(url);
                 }}
-                style={{ color: "var(--red)", cursor: "pointer" }}
+                style={{ color: "var(--red)" }}
               >
                 {sourceLabel || "GitHub"} releases page
               </a>{" "}
@@ -734,9 +616,8 @@ export default function UpdateModal({
             </div>
           )}
 
-          {/* Progress bar */}
           {(phase === "downloading" || phase === "installing") && (
-            <div style={{ marginBottom: 14 }}>
+            <div>
               <div
                 style={{
                   display: "flex",
@@ -757,67 +638,80 @@ export default function UpdateModal({
                 )}
               </div>
               <div
-                style={{
-                  height: 4,
-                  background: "var(--surface2)",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                }}
+                className="lumen-progress-track"
+                role="progressbar"
+                aria-label="Update progress"
+                aria-valuenow={phase === "downloading" ? Math.round(progress) : undefined}
               >
                 <div
-                  style={{
-                    height: "100%",
-                    width: phase === "installing" ? "100%" : `${progress}%`,
-                    background: "var(--red)",
-                    borderRadius: 2,
-                    transition: "width 0.3s ease",
-                    animation:
-                      phase === "installing"
-                        ? "progress-indeterminate 1.2s ease-in-out infinite"
-                        : "none",
-                  }}
+                  className={`lumen-progress-fill${phase === "installing" ? " lumen-progress-fill--indeterminate" : ""}`}
+                  style={
+                    phase === "installing" ? undefined : { width: `${progress}%` }
+                  }
                 />
               </div>
             </div>
           )}
 
-          {/* Error */}
           {phase === "error" && (
             <div
-              style={{ fontSize: 13, color: "var(--red)", marginBottom: 12 }}
+              role="alert"
+              style={{
+                fontSize: 13,
+                color: "var(--red)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
             >
-              ✕ {errorMsg}
-              <span style={{ marginLeft: 10 }}>
-                <a
-                  href={url}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.electron?.openExternal(url);
-                  }}
-                  style={{
-                    color: "var(--red)",
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  }}
-                >
-                  Download manually ↗
-                </a>
-              </span>
+              <WarningIcon size={14} />
+              <span>{errorMsg}</span>
+              <a
+                href={url}
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.electron?.openExternal(url);
+                }}
+                style={{ color: "var(--red)", textDecoration: "underline" }}
+              >
+                Download manually
+              </a>
             </div>
           )}
 
-          {/* Done */}
           {phase === "done" && (
-            <div style={{ fontSize: 13, color: "#48c774", marginBottom: 12 }}>
-              ✓ Update downloaded, installer is running
+            <div
+              role="status"
+              style={{
+                fontSize: 13,
+                color: "var(--success)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <CheckIcon size={15} />
+              <span>Update downloaded — installer is running</span>
             </div>
           )}
 
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button className="btn btn-ghost" onClick={handleCancel}>
-              {phase === "downloading" ? "Cancel" : "Close"}
-            </button>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              justifyContent: "flex-end",
+            }}
+          >
+            {phase !== "installing" && (
+              <button
+                type="button"
+                className="btn btn-ghost btn--sm"
+                onClick={handleCancel}
+              >
+                {phase === "downloading" ? "Cancel download" : "Close"}
+              </button>
+            )}
             {phase === "idle" && (
               <>
                 <a
@@ -826,51 +720,26 @@ export default function UpdateModal({
                     e.preventDefault();
                     window.electron?.openExternal(url);
                   }}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "9px 18px",
-                    background: "var(--surface2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--text)",
-                    textDecoration: "none",
-                    cursor: "pointer",
-                  }}
+                  className="btn btn-secondary btn--sm"
+                  style={{ textDecoration: "none" }}
                 >
-                  {sourceLabel || "GitHub"} ↗
+                  <span>{sourceLabel || "GitHub"}</span>
+                  <ExternalLinkIcon size={13} />
                 </a>
                 <button
-                  className="btn"
+                  type="button"
+                  className="btn btn-primary btn--sm"
                   disabled={!canInstall}
                   onClick={handleInstall}
-                  style={{
-                    background: canInstall
-                      ? "var(--red)"
-                      : "rgba(229,9,20,0.3)",
-                    color: "#fff",
-                    border: "none",
-                    fontWeight: 600,
-                    opacity: canInstall ? 1 : 0.6,
-                    cursor: canInstall ? "pointer" : "not-allowed",
-                  }}
+                  style={{ opacity: canInstall ? 1 : 0.5 }}
                 >
-                  Install Update
+                  Install update
                 </button>
               </>
             )}
           </div>
         </div>
       </div>
-
-      <style>{`
-        @keyframes progress-indeterminate {
-          0%   { transform: translateX(-100%); width: 60%; }
-          100% { transform: translateX(200%);  width: 60%; }
-        }
-      `}</style>
     </div>
   );
 }

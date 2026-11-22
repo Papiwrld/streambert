@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { imgUrl } from "../utils/api";
+import { useModal } from "../utils/useModal";
 
 const normalizeCastPerson = (person) => {
   if (Array.isArray(person.roles)) {
@@ -102,22 +103,7 @@ export default function CastModal({
   creators = [],
   title,
 }) {
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  // Lock body scroll while the modal is open.
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  const { dialogProps, backdropProps, titleId } = useModal(onClose);
 
   const directors = useMemo(() => getDirectors(crew), [crew]);
   const writers = useMemo(() => getWriters(crew), [crew]);
@@ -127,17 +113,16 @@ export default function CastModal({
   );
 
   return (
-    <div className="cast-overlay" onClick={onClose}>
+    <div className="cast-overlay" {...backdropProps}>
       <div
         className="cast-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Cast & Crew — ${title}`}
-        onClick={(e) => e.stopPropagation()}
+        {...dialogProps}
+        aria-labelledby={titleId}
       >
         <div className="cast-modal-header">
-          <span className="cast-modal-title">🎭 Cast &amp; Crew — {title}</span>
+          <span id={titleId} className="cast-modal-title">Cast &amp; crew · {title}</span>
           <button
+            type="button"
             className="cast-close-btn"
             onClick={onClose}
             aria-label="Close"

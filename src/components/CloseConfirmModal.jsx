@@ -1,20 +1,28 @@
 import { DownloadIcon } from "./Icons";
+import { useModal } from "../utils/useModal";
 
 export default function CloseConfirmModal({ count, onConfirm, onCancel }) {
+  const { dialogProps, backdropProps, titleId, descriptionId } = useModal(onCancel);
+
   return (
-    <div className="close-confirm-overlay">
-      <div className="close-confirm-modal">
+    <div className="close-confirm-overlay" {...backdropProps}>
+      <div
+        className="close-confirm-modal"
+        {...dialogProps}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      >
         <div className="close-confirm-icon-wrap">
           <div className="close-confirm-icon-ring">
             <DownloadIcon />
           </div>
         </div>
 
-        <div className="close-confirm-title">
-          Download{count > 1 ? "s" : ""} in Progress
+        <div id={titleId} className="close-confirm-title">
+          Download{count > 1 ? "s" : ""} in progress
         </div>
 
-        <div className="close-confirm-body">
+        <div id={descriptionId} className="close-confirm-body">
           <span className="close-confirm-count">
             {count} active download{count > 1 ? "s" : ""}
           </span>{" "}
@@ -22,11 +30,20 @@ export default function CloseConfirmModal({ count, onConfirm, onCancel }) {
         </div>
 
         <div className="close-confirm-actions">
-          <button className="btn close-confirm-btn-cancel" onClick={onCancel}>
-            Keep Downloading
+          <button
+            type="button"
+            className="btn close-confirm-btn-cancel"
+            data-modal-initial-focus
+            onClick={onCancel}
+          >
+            Keep downloading
           </button>
-          <button className="btn close-confirm-btn-confirm" onClick={onConfirm}>
-            Cancel & Close App
+          <button
+            type="button"
+            className="btn close-confirm-btn-confirm"
+            onClick={onConfirm}
+          >
+            Cancel & close app
           </button>
         </div>
       </div>

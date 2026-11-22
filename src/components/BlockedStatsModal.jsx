@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { CloseIcon, ShieldBlockIcon } from "./Icons";
+import { useModal } from "../utils/useModal";
 
 /**
  * Modal showing which ad/tracker domains were blocked during the current session
@@ -11,27 +11,22 @@ export default function BlockedStatsModal({
   alltimeTotal,
   onClose,
 }) {
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  const { dialogProps, backdropProps, titleId } = useModal(onClose);
 
   return (
-    <div className="blocked-modal-overlay" onClick={onClose}>
-      <div className="blocked-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="blocked-modal-overlay" {...backdropProps}>
+      <div className="blocked-modal" {...dialogProps} aria-labelledby={titleId}>
         <div className="blocked-modal-header">
-          <div className="blocked-modal-title">
+          <div id={titleId} className="blocked-modal-title">
             <ShieldBlockIcon size={15} />
-            Ads &amp; Trackers Blocked
+            Ads &amp; trackers blocked
           </div>
           <button
+            type="button"
             className="blocked-modal-close"
             onClick={onClose}
             title="Close"
+            aria-label="Close"
           >
             <CloseIcon />
           </button>

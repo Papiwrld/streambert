@@ -7,6 +7,16 @@ import {
   FilmIcon,
   WatchedIcon,
   SubtitlesIcon,
+  SearchIcon,
+  CloseIcon,
+  RefreshIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  EyeOpenIcon,
+  EyeOffIcon,
+  PencilIcon,
+  ResetIcon,
+  CheckIcon,
 } from "../components/Icons";
 import { storage, isElectron, STORAGE_KEYS } from "../utils/storage";
 import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
@@ -230,7 +240,7 @@ export default function DownloadsPage({
     if (!highlightId || !highlightRef.current) return;
     const el = highlightRef.current;
     const tScroll = setTimeout(
-      () => el.scrollIntoView({ behavior: "smooth", block: "center" }),
+      () => el.scrollIntoView({ behavior: "auto", block: "center" }),
       150,
     );
     const t = setTimeout(() => onClearHighlight?.(), 3000);
@@ -373,7 +383,7 @@ export default function DownloadsPage({
           }}
         />
       )}
-      <div className="dl-page__title">DOWNLOADS</div>
+      <h1 className="dl-page__title">Downloads</h1>
       <div className="dl-page__subtitle">
         {active.length > 0 ? `${active.length} active` : "No active downloads"}{" "}
         · {allLocalItemsRaw.length} completed
@@ -382,20 +392,7 @@ export default function DownloadsPage({
       {/* ── Ctrl+K Search bar ─────────────────────────────────────────────── */}
       {searchOpen && (
         <div className="dl-search-bar">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--text3)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flexShrink: 0 }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          <SearchIcon size={14} style={{ flexShrink: 0, color: "var(--text3)" }} />
           <input
             ref={searchInputRef}
             className="dl-search-bar__input"
@@ -417,8 +414,9 @@ export default function DownloadsPage({
               setSearchQuery("");
             }}
             title="Close (Esc)"
+            aria-label="Close search"
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
       )}
@@ -443,8 +441,14 @@ export default function DownloadsPage({
             className="dl-toolbar__dir-btn"
             onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
             title={sortDir === "desc" ? "Descending" : "Ascending"}
+            aria-label={sortDir === "desc" ? "Sort descending" : "Sort ascending"}
+            style={{ display: "inline-flex", alignItems: "center" }}
           >
-            {sortDir === "desc" ? "↓" : "↑"}
+            {sortDir === "desc" ? (
+              <ArrowDownIcon size={13} />
+            ) : (
+              <ArrowUpIcon size={13} />
+            )}
           </button>
         </div>
 
@@ -456,9 +460,16 @@ export default function DownloadsPage({
             title={
               showUntracked ? "Hide untracked files" : "Show untracked files"
             }
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            {showUntracked ? "⊙" : "⊘"} Untracked
-            {untrackedCount > 0 ? ` (${untrackedCount})` : ""}
+            {showUntracked ? (
+              <EyeOpenIcon size={13} />
+            ) : (
+              <EyeOffIcon size={13} />
+            )}
+            <span>
+              Untracked{untrackedCount > 0 ? ` (${untrackedCount})` : ""}
+            </span>
           </button>
           {!searchOpen && (
             <button
@@ -466,19 +477,7 @@ export default function DownloadsPage({
               onClick={() => setSearchOpen(true)}
               title="Search (Ctrl+K)"
             >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              <SearchIcon size={13} />
               <span className="dl-toolbar__search-hint-key">Ctrl+K</span>
             </button>
           )}
@@ -519,7 +518,7 @@ export default function DownloadsPage({
       <div>
         <div className="dl-page__local-header">
           <div className="settings-section-title dl-section-title--inline">
-            Local Files
+            Local files
           </div>
           <div className="dl-page__scan-controls">
             {isElectron && (
@@ -547,7 +546,8 @@ export default function DownloadsPage({
                   onClick={handleScanFolder}
                   disabled={scanning || !scanFolder}
                 >
-                  {scanning ? "Scanning…" : "⟳ Scan"}
+                  <RefreshIcon size={13} />
+                  <span>{scanning ? "Scanning…" : "Scan"}</span>
                 </button>
               </>
             )}
@@ -625,13 +625,11 @@ export default function DownloadsPage({
               );
             })}
           </div>
-        ) : (
+        ) : downloads.length === 0 && localFiles.length === 0 && !q ? null : (
           <div className="dl-page__empty-text">
             {q
               ? `No downloads match "${searchQuery}".`
-              : downloads.length === 0 && localFiles.length === 0
-                ? "No local files yet. Scan a folder or start a download."
-                : "No completed downloads or local files found."}
+              : "No completed downloads or local files found."}
           </div>
         )}
       </div>
@@ -674,7 +672,12 @@ const ActiveCard = memo(function ActiveCard({ dl, onDelete, onSelect }) {
             {dl.name}
           </div>
           <div className="dl-card__meta">
-            {dl.speed && <span>↓ {dl.speed}</span>}
+            {dl.speed && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <ArrowDownIcon size={11} />
+                {dl.speed}
+              </span>
+            )}
             {dl.size && <span>{dl.size}</span>}
             {dl.totalFragments > 0 && (
               <span>
@@ -683,23 +686,12 @@ const ActiveCard = memo(function ActiveCard({ dl, onDelete, onSelect }) {
             )}
             {dl.subtitles?.length > 0 && (
               <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: 3,
-                  background: "rgba(99,202,183,0.12)",
-                  color: "#63cab7",
-                  border: "1px solid rgba(99,202,183,0.25)",
-                }}
+                className="dl-sub-pill dl-sub-pill--active"
                 title={dl.subtitles
                   .map((s) => s.lang?.toUpperCase())
                   .join(", ")}
               >
-                <SubtitlesIcon
-                  size={11}
-                  style={{ verticalAlign: "middle", marginRight: 3 }}
-                />
+                <SubtitlesIcon size={11} />
                 {dl.subtitles
                   .map((s) => (s.lang || "?").toUpperCase())
                   .join(" · ")}
@@ -1003,37 +995,9 @@ const LocalFileCard = memo(function LocalFileCard({
                         : "No subtitles"
                   }
                   onClick={onOpenSubtitleDownloader || undefined}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "1px 6px",
-                    borderRadius: 3,
-                    background: hasSubs
-                      ? "rgba(99,202,183,0.12)"
-                      : "rgba(255,255,255,0.04)",
-                    color: hasSubs ? "#63cab7" : "var(--text3)",
-                    border: hasSubs
-                      ? "1px solid rgba(99,202,183,0.25)"
-                      : "1px solid var(--border)",
-                    cursor: onOpenSubtitleDownloader ? "pointer" : "default",
-                    letterSpacing: "0.03em",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (onOpenSubtitleDownloader)
-                      e.currentTarget.style.opacity = "0.75";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = "1";
-                  }}
+                  className={`dl-sub-pill${hasSubs ? " dl-sub-pill--active" : ""}${onOpenSubtitleDownloader ? " dl-sub-pill--clickable" : ""}`}
                 >
-                  <SubtitlesIcon
-                    size={10}
-                    style={{ verticalAlign: "middle" }}
-                  />
+                  <SubtitlesIcon size={11} />
                   {hasSubs ? langs : "No subtitles"}
                 </span>
               );
@@ -1053,36 +1017,15 @@ const LocalFileCard = memo(function LocalFileCard({
                   <span className="dl-progress-pill__label">
                     {progressLabel}
                   </span>
-                  <span className="dl-progress-pill__edit-icon">✎</span>
+                  <span className="dl-progress-pill__edit-icon">
+                    <PencilIcon size={10} />
+                  </span>
                 </span>
 
                 {showPopover && (
-                  <div
-                    ref={popoverRef}
-                    style={{
-                      position: "absolute",
-                      bottom: "calc(100% + 6px)",
-                      left: 0,
-                      zIndex: 9999,
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      padding: "10px 12px 9px",
-                      width: 240,
-                      boxShadow: "0 6px 24px rgba(0,0,0,0.55)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 7,
-                    }}
-                  >
+                  <div ref={popoverRef} className="dl-popover">
                     {/* Header: time display + close */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        justifyContent: "space-between",
-                      }}
-                    >
+                    <div className="dl-popover__header">
                       <div
                         style={{
                           display: "flex",
@@ -1115,11 +1058,12 @@ const LocalFileCard = memo(function LocalFileCard({
                         </span>
                       </div>
                       <button
+                        type="button"
                         className="icon-btn"
                         onClick={() => setShowPopover(false)}
-                        style={{ fontSize: 12, padding: "0 3px" }}
+                        aria-label="Close"
                       >
-                        ✕
+                        <CloseIcon size={13} />
                       </button>
                     </div>
 
@@ -1165,26 +1109,7 @@ const LocalFileCard = memo(function LocalFileCard({
 
                     {/* Text input + Reset + Save */}
                     <div style={{ display: "flex", gap: 5 }}>
-                      <div
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          background: "var(--surface2)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 6,
-                          padding: "4px 8px",
-                          gap: 2,
-                        }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "var(--red)";
-                        }}
-                        onBlur={(e) => {
-                          if (!e.currentTarget.contains(e.relatedTarget))
-                            e.currentTarget.style.borderColor = "var(--border)";
-                        }}
-                      >
+                      <div className="dl-popover__time-input">
                         {[
                           {
                             ref: hhRef,
@@ -1260,17 +1185,20 @@ const LocalFileCard = memo(function LocalFileCard({
                         ))}
                       </div>
                       <button
+                        type="button"
                         className="btn btn-ghost btn--sm"
                         onClick={resetProgress}
-                        style={{ fontSize: 11, padding: "4px 7px" }}
+                        style={{ padding: "0 8px" }}
                         title="Reset"
+                        aria-label="Reset progress"
                       >
-                        ↺
+                        <ResetIcon size={12} />
                       </button>
                       <button
+                        type="button"
                         className="btn btn-primary btn--sm"
                         onClick={commitPopover}
-                        style={{ fontSize: 11, padding: "4px 9px" }}
+                        style={{ padding: "0 10px" }}
                       >
                         Save
                       </button>
@@ -1288,7 +1216,7 @@ const LocalFileCard = memo(function LocalFileCard({
               <button
                 className="btn btn-ghost watched-btn dl-btn--sm"
                 onClick={onMarkUnwatched}
-                title="Mark as Unwatched"
+                title="Mark as unwatched"
               >
                 <WatchedIcon size={13} /> Watched
               </button>
@@ -1296,9 +1224,9 @@ const LocalFileCard = memo(function LocalFileCard({
               <button
                 className="btn btn-ghost dl-btn--sm"
                 onClick={onMarkWatched}
-                title="Mark as Watched"
+                title="Mark as watched"
               >
-                ✓ Mark Watched
+                <CheckIcon size={13} /> Mark watched
               </button>
             ))}
           {canWatch && (
@@ -1333,7 +1261,7 @@ const LocalFileCard = memo(function LocalFileCard({
               title="Open error log"
               style={{ color: "var(--red)", fontSize: 11 }}
             >
-              View Log
+              View log
             </button>
           )}
         </div>
